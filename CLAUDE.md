@@ -96,7 +96,7 @@ Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must b
 `ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
 wrong node on a Deployment and silently close the gate on every version.
 
-### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Service)
+### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress)
 
 The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
 reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
@@ -112,8 +112,8 @@ name too, never declared. `nameFormat` defaults to `'subdomain'`, is `'label'` f
 name prefixes generated Pod names (StatefulSet) and `'rfc1035'` for a Service, whose name has
 to start with a letter; `metadata.ts` reads it.
 
-`podTemplate` is `{ specPath, metadataPath, claimTemplatesPath? }`, and **it is optional**: a
-Service describes no Pod at all. Its absence is what makes `POD_RULES` skip the kind
+`podTemplate` is `{ specPath, metadataPath, claimTemplatesPath? }`, and **it is optional**:
+neither a Service nor an Ingress describes a Pod at all. Its absence is what makes `POD_RULES` skip the kind
 (`index.ts`), so a kind with no pod template is checked by layer 1, by `RULES` — the
 document-level rules, `metadata.ts` and `enums.ts` — and by its own module, and by nothing
 else. `claimTemplatesPath` is the one concession to a kind that generates volumes: a
@@ -125,9 +125,9 @@ is not reported as undeclared.
 `ctx.meta(...)` prefixes `podTemplate.metadataPath`, and `ctx.field(...)` renders a dotted name
 for a message. There are no `['spec', …]` literals left in the PodSpec rules; reintroducing one
 silently breaks Deployment. The deliberate exceptions are `rules/deployment.ts`,
-`rules/statefulset.ts`, `rules/daemonset.ts` and `rules/service.ts`, which address
-`spec.selector`, `spec.strategy`, `spec.updateStrategy`, `spec.ports` and the like — fields of
-the object itself, not of any pod spec.
+`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts` and `rules/ingress.ts`, which
+address `spec.selector`, `spec.strategy`, `spec.updateStrategy`, `spec.ports`, `spec.rules` and
+the like — fields of the object itself, not of any pod spec.
 
 `ctx.doc` is the document root (used by `metadata.ts`, `enums.ts` and every per-kind module);
 `ctx.spec` is the PodSpec wherever this kind keeps it, and `{}` for a kind with no pod
@@ -135,8 +135,8 @@ template. `ContainerRef.path` already carries the prefix, so any rule built on `
 is kind-correct for free.
 
 Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
-and `deployment/*` / `statefulset/*` / `daemonset/*` / `service/*` for checks on the object
-itself. The two document-level rules are named for what they check rather than for a kind,
+and `deployment/*` / `statefulset/*` / `daemonset/*` / `service/*` / `ingress/*` for checks on
+the object itself. The two document-level rules are named for what they check rather than for a kind,
 since they run for every kind including one with no Pod: `meta/*` in `metadata.ts` and
 `enum/*` in `enums.ts`. `Schema` is per version and holds every root; `Schema.for(kind)`
 returns the `KindSchema` view that both lint layers actually use.
@@ -157,6 +157,15 @@ knows, since the enum rule has already reported that — and the checks that tur
 the `undefined` case while the rest (port numbers, name formats, IP syntax) still run.
 `k8s/net.ts` holds the IP and CIDR parsers that needs, matching Go's netip rather than
 inet_aton: `010.1.1.1` is an error, not octal.
+
+`ingress.ts` is the second such kind, and it turns instead on how much layer 1 already covers:
+`pathType` and `backend` are required on a path, `paths` on an `http` block, `name` on a service
+backend, so the module is left with what the schema cannot express — an empty list where a
+missing one would have been caught, an empty string where a missing key would have been, and the
+mutually exclusive pairs (`service` vs `resource`, port `name` vs `number`) the API models as two
+optional fields. It reuses `isIPAddress` to refuse an address where a rule wants a name, and
+`isWildcardDNS1123Subdomain` in `k8s/names.ts` for the one leading `*.` label a host may carry.
+Nothing in it is version-gated: networking/v1 Ingress has been served unchanged since 1.19.
 
 **Adding a further kind**, in order:
 
@@ -188,12 +197,12 @@ The reusable machinery — the schema walk, `walkFields`,
 ### Schema bundles
 
 `scripts/generate-schema.mjs` unions the transitive `$ref` closure of every root in `ROOTS`
-(169 defs at 1.36, ~310 KB on disk, ~47 KB brotli) and writes `{ k8sVersion, source, generatedAt,
+(182 defs at 1.36, ~325 KB on disk, ~49 KB brotli) and writes `{ k8sVersion, source, generatedAt,
 roots, definitions }`. One file per version rather than one per kind: the Deployment closure is
 a near-total superset of Pod's, the StatefulSet one adds little beyond `PersistentVolumeClaim`,
 and the DaemonSet one adds only its own spec and update strategy, so per-kind files would be
-near-duplicates. Service is the one root that shares nothing below `ObjectMeta`, and it still
-adds under ten definitions. API descriptions are kept on purpose — they are what the hover tooltip and
+near-duplicates. Service and Ingress are the two roots that share nothing below `ObjectMeta`,
+and each still adds only about a dozen definitions. API descriptions are kept on purpose — they are what the hover tooltip and
 most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,

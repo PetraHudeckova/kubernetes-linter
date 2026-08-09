@@ -2,6 +2,7 @@ import type { Path } from './types.js';
 import type { Rule } from './rules/context.js';
 import { daemonSetRule } from './rules/daemonset.js';
 import { deploymentRule } from './rules/deployment.js';
+import { ingressRule } from './rules/ingress.js';
 import { serviceRule } from './rules/service.js';
 import { statefulSetRule } from './rules/statefulset.js';
 
@@ -82,5 +83,9 @@ export const KINDS: Record<string, KindDescriptor> = {
     kind: 'Service',
     nameFormat: 'rfc1035',
     rules: [serviceRule],
+  },
+  Ingress: {
+    kind: 'Ingress',
+    rules: [ingressRule],
   },
 };

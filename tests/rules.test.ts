@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
+  VALID_INGRESS,
   VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSet,
@@ -11,6 +12,9 @@ import {
   expectNoRule,
   expectRule,
   expectRules,
+  ingress,
+  ingressPath,
+  ingressWithPaths,
   pod,
   podWithContainer,
   ruleIds,
@@ -1787,6 +1791,308 @@ describe('service', () => {
     // A Service has no pod template, so the shared rules do not run for it at
     // all — a "containers" key here is an unknown field, nothing more.
     const ids = ruleIds(service('  containers:\n    - name: web\n      image: a\n'));
+    expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
+    expect(ids).toContain('schema/unknown-field');
+  });
+});
+
+describe('ingress', () => {
+  it('accepts a valid Ingress', () => {
+    expectRules(VALID_INGRESS, []);
+  });
+
+  it('takes a DNS subdomain name, unlike a Service', () => {
+    expectNoRule(VALID_INGRESS.replace('  name: web\n', '  name: web.example\n'), 'meta/invalid-name');
+  });
+
+  describe('routing', () => {
+    it('requires either rules or a default backend', () => {
+      const finding = expectRule(ingress('  ingressClassName: nginx\n'), 'ingress/no-routes');
+      expect(finding.message).toContain('spec.defaultBackend');
+    });
+
+    it('reports it with no spec at all', () => {
+      expectRule('apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: web\n', 'ingress/no-routes');
+    });
+
+    it('treats an empty rule list as no rules', () => {
+      const finding = expectRule(ingress('  rules: []\n'), 'ingress/no-routes');
+      expect(finding.path).toEqual(['spec', 'rules']);
+    });
+
+    it('accepts a default backend on its own', () => {
+      expectRules(
+        ingress('  defaultBackend:\n    service:\n      name: web\n      port:\n        number: 80\n'),
+        [],
+      );
+    });
+
+    it('rejects an empty path list', () => {
+      expectRule(ingress('  rules:\n    - http:\n        paths: []\n'), 'ingress/empty-paths');
+    });
+
+    it('warns about a rule that carries no http block', () => {
+      const finding = expectRule(
+        ingress('  defaultBackend:\n    service:\n      name: web\n      port:\n        number: 80\n' +
+          '  rules:\n    - host: web.example.com\n'),
+        'ingress/rule-without-http',
+      );
+      expect(finding.severity).toBe('warning');
+    });
+  });
+
+  describe('hosts', () => {
+    it('rejects an IP address', () => {
+      const finding = expectRule(ingressWithPaths(ingressPath('/'), '10.0.0.1'), 'ingress/host-is-ip');
+      expect(finding.message).toContain('DNS name');
+    });
+
+    it('rejects a host carrying a port', () => {
+      expectRule(ingressWithPaths(ingressPath('/'), '"web.example.com:8080"'), 'ingress/invalid-host');
+    });
+
+    it('accepts a leading wildcard label', () => {
+      expectRules(ingressWithPaths(ingressPath('/'), '"*.example.com"'), []);
+    });
+
+    it('rejects a wildcard anywhere but the leftmost label', () => {
+      expectRule(ingressWithPaths(ingressPath('/'), 'web.*.example.com'), 'ingress/invalid-wildcard-host');
+    });
+
+    it('accepts a rule with no host, which matches every name', () => {
+      expectRules(ingress('  rules:\n    - http:\n        paths:\n' + ingressPath('/')), []);
+    });
+  });
+
+  describe('paths', () => {
+    it('requires a Prefix path to be absolute', () => {
+      const finding = expectRule(ingressWithPaths(ingressPath('healthz')), 'ingress/path-not-absolute');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'rules', 0, 'http', 'paths', 0, 'path'], value: '/healthz' },
+      ]);
+    });
+
+    it('requires an Exact path to be present at all', () => {
+      const yaml = ingressWithPaths(
+        '          - pathType: Exact\n            backend:\n              service:\n' +
+          '                name: web\n                port:\n                  number: 80\n',
+      );
+      const finding = expectRule(yaml, 'ingress/path-not-absolute');
+      expect(finding.message).toContain('must set "path"');
+    });
+
+    it('lets an ImplementationSpecific path be omitted', () => {
+      expectRules(
+        ingressWithPaths(
+          '          - pathType: ImplementationSpecific\n            backend:\n              service:\n' +
+            '                name: web\n                port:\n                  number: 80\n',
+        ),
+        [],
+      );
+    });
+
+    it('still requires an ImplementationSpecific path that is present to be absolute', () => {
+      expectRule(ingressWithPaths(ingressPath('healthz', 'ImplementationSpecific')), 'ingress/path-not-absolute');
+    });
+
+    it('rejects path elements that can never match', () => {
+      for (const path of ['/a//b', '/a/./b', '/a/../b', '/a%2fb']) {
+        expectRule(ingressWithPaths(ingressPath(path)), 'ingress/invalid-path-sequence');
+      }
+    });
+
+    it('rejects a relative element at the end', () => {
+      const finding = expectRule(ingressWithPaths(ingressPath('/a/..')), 'ingress/invalid-path-sequence');
+      expect(finding.message).toContain('must not end with');
+    });
+
+    it('leaves an unknown pathType to the enum rule', () => {
+      const yaml = ingressWithPaths(ingressPath('relative', 'prefix'));
+      expectRule(yaml, 'enum/invalid-value');
+      expectNoRule(yaml, 'ingress/path-not-absolute');
+    });
+
+    it('warns about a host, type and path repeated', () => {
+      const finding = expectRule(
+        ingressWithPaths(ingressPath('/a', 'Exact') + ingressPath('/a', 'Exact')),
+        'ingress/duplicate-path',
+      );
+      expect(finding.severity).toBe('warning');
+      expect(finding.message).toContain('rule 1, path 1');
+    });
+
+    it('does not warn when only the path type differs', () => {
+      expectRules(ingressWithPaths(ingressPath('/a', 'Exact') + ingressPath('/a', 'Prefix')), []);
+    });
+
+    it('does not warn when the same path sits under two hosts', () => {
+      expectRules(
+        ingress(
+          `  rules:\n    - host: a.example.com\n      http:\n        paths:\n${ingressPath('/')}` +
+            `    - host: b.example.com\n      http:\n        paths:\n${ingressPath('/')}`,
+        ),
+        [],
+      );
+    });
+  });
+
+  describe('backends', () => {
+    const backend = (fragment: string) => ingress(`  defaultBackend:\n${fragment}`);
+
+    it('rejects one that names nothing', () => {
+      expectRule(backend('    {}\n'), 'ingress/empty-backend');
+    });
+
+    it('rejects one that names both a service and a resource', () => {
+      expectRule(
+        backend(
+          '    service:\n      name: web\n      port:\n        number: 80\n' +
+            '    resource:\n      apiGroup: k8s.example.com\n      kind: StorageBucket\n      name: assets\n',
+        ),
+        'ingress/ambiguous-backend',
+      );
+    });
+
+    it('accepts a resource backend on its own', () => {
+      expectRules(
+        backend('    resource:\n      apiGroup: k8s.example.com\n      kind: StorageBucket\n      name: assets\n'),
+        [],
+      );
+    });
+
+    it('requires a port', () => {
+      expectRule(backend('    service:\n      name: web\n'), 'ingress/missing-backend-port');
+    });
+
+    it('treats port number 0 as no port at all', () => {
+      // 0 is the Go zero value, so the apiserver reads it as unset rather than
+      // as a port out of range.
+      expectRule(
+        backend('    service:\n      name: web\n      port:\n        number: 0\n'),
+        'ingress/missing-backend-port',
+      );
+    });
+
+    it('rejects a port name and number together', () => {
+      expectRule(
+        backend('    service:\n      name: web\n      port:\n        name: http\n        number: 80\n'),
+        'ingress/ambiguous-backend-port',
+      );
+    });
+
+    it('rejects a port number out of range', () => {
+      expectRule(
+        backend('    service:\n      name: web\n      port:\n        number: 70000\n'),
+        'ingress/backend-port-out-of-range',
+      );
+    });
+
+    it('rejects a port name that no Service port could carry', () => {
+      expectRule(
+        backend('    service:\n      name: web\n      port:\n        name: HTTP\n'),
+        'ingress/invalid-backend-port-name',
+      );
+    });
+
+    it('requires the Service name to be an RFC 1035 label', () => {
+      const finding = expectRule(
+        backend('    service:\n      name: web.example\n      port:\n        number: 80\n'),
+        'ingress/invalid-backend-service-name',
+      );
+      expect(finding.message).toContain('Service name');
+    });
+
+    it('checks the backend of a path as well as the default one', () => {
+      const finding = expectRule(
+        ingressWithPaths(
+          '          - path: /\n            pathType: Prefix\n' +
+            '            backend:\n              service:\n                name: web\n',
+        ),
+        'ingress/missing-backend-port',
+      );
+      expect(finding.message).toContain('rule 1, path 1');
+    });
+  });
+
+  describe('TLS', () => {
+    it('rejects a host that is not a name', () => {
+      expectRule(
+        VALID_INGRESS.replace('        - web.example.com\n', '        - Web_Example\n'),
+        'ingress/invalid-host',
+      );
+    });
+
+    it('accepts a wildcard host covering the rule host', () => {
+      expectRules(VALID_INGRESS.replace('        - web.example.com\n', '        - "*.example.com"\n'), []);
+    });
+
+    it('rejects a secret name that is not an object name', () => {
+      expectRule(VALID_INGRESS.replace('web-tls', 'Web_TLS'), 'ingress/invalid-secret-name');
+    });
+
+    it('accepts a TLS block with no secret, which uses the default certificate', () => {
+      expectRules(VALID_INGRESS.replace('      secretName: web-tls\n', ''), []);
+    });
+
+    it('warns when no rule routes the certificate host', () => {
+      const finding = expectRule(
+        VALID_INGRESS.replace('        - web.example.com\n', '        - other.example.com\n'),
+        'ingress/tls-host-unmatched',
+      );
+      expect(finding.severity).toBe('warning');
+    });
+
+    it('stays quiet when no rule names a host at all', () => {
+      expectRules(
+        ingress(
+          '  tls:\n    - hosts:\n        - web.example.com\n      secretName: web-tls\n' +
+            `  rules:\n    - http:\n        paths:\n${ingressPath('/')}`,
+        ),
+        [],
+      );
+    });
+  });
+
+  describe('ingress class', () => {
+    it('requires a valid class name', () => {
+      expectRule(
+        VALID_INGRESS.replace('ingressClassName: nginx', 'ingressClassName: NGINX'),
+        'ingress/invalid-class-name',
+      );
+    });
+
+    it('warns about the annotation IngressClass replaced, and offers to move it', () => {
+      const yaml = ingress(
+        '  defaultBackend:\n    service:\n      name: web\n      port:\n        number: 80\n',
+        '  name: web\n  annotations:\n    kubernetes.io/ingress.class: nginx\n',
+      );
+      const finding = expectRule(yaml, 'ingress/deprecated-class-annotation');
+      expect(finding.severity).toBe('warning');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'ingressClassName'], value: 'nginx' },
+        { op: 'delete', path: ['metadata', 'annotations', 'kubernetes.io/ingress.class'] },
+      ]);
+    });
+
+    it('says so when the annotation and the field disagree', () => {
+      const finding = expectRule(
+        VALID_INGRESS.replace(
+          '  name: web\n',
+          '  name: web\n  annotations:\n    kubernetes.io/ingress.class: traefik\n',
+        ),
+        'ingress/deprecated-class-annotation',
+      );
+      expect(finding.message).toContain('"nginx"');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['metadata', 'annotations', 'kubernetes.io/ingress.class'] },
+      ]);
+    });
+  });
+
+  it('runs none of the pod spec rules', () => {
+    // An Ingress has no pod template, so the shared rules do not run for it at
+    // all — a "containers" key here is an unknown field, nothing more.
+    const ids = ruleIds(ingress('  containers:\n    - name: web\n      image: a\n'));
     expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
     expect(ids).toContain('schema/unknown-field');
   });

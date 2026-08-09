@@ -46,6 +46,24 @@ export function isDNS1123Subdomain(value: string): FormatCheck {
   return { ok: true };
 }
 
+/**
+ * A wildcard subdomain, RFC 1034 section 4.3.3: exactly "*." followed by a DNS
+ * subdomain. The star stands for one label and only the leftmost one, so
+ * "*.example.com" matches "web.example.com" but neither "example.com" nor
+ * "a.web.example.com".
+ */
+export function isWildcardDNS1123Subdomain(value: string): FormatCheck {
+  if (value.length > DNS_1123_SUBDOMAIN_MAX)
+    return { ok: false, reason: `must be at most ${DNS_1123_SUBDOMAIN_MAX} characters` };
+  if (!value.startsWith('*.') || !DNS_1123_SUBDOMAIN.test(value.slice(2))) {
+    return {
+      ok: false,
+      reason: 'must start with "*." followed by a valid DNS subdomain, such as "*.example.com"',
+    };
+  }
+  return { ok: true };
+}
+
 export function isDNS1035Label(value: string): FormatCheck {
   if (value.length === 0) return { ok: false, reason: 'must not be empty' };
   if (value.length > DNS_1035_LABEL_MAX)

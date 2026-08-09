@@ -238,3 +238,54 @@ spec:
 export function service(specFragment: string, metadataFragment = '  name: web\n'): string {
   return `apiVersion: v1\nkind: Service\nmetadata:\n${metadataFragment}spec:\n${specFragment}`;
 }
+
+/** A minimal valid Ingress that individual tests mutate. */
+export const VALID_INGRESS = `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - web.example.com
+      secretName: web-tls
+  rules:
+    - host: web.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
+`;
+
+/**
+ * Build an Ingress from a fragment of IngressSpec. Like `service()` the
+ * fragment is the whole spec: an Ingress has no pod template to keep
+ * consistent, and most of what it is checked for is which fields may sit next
+ * to which. Fragments are indented two spaces, matching `pod()`.
+ */
+export function ingress(specFragment: string, metadataFragment = '  name: web\n'): string {
+  return `apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n${metadataFragment}spec:\n${specFragment}`;
+}
+
+/**
+ * An Ingress carrying one rule with the given path entries, which is the shape
+ * most path and backend tests need.
+ */
+export function ingressWithPaths(pathsFragment: string, host = 'web.example.com'): string {
+  return ingress(`  rules:\n    - host: ${host}\n      http:\n        paths:\n${pathsFragment}`);
+}
+
+/** One `http.paths` entry pointing at a Service, for `ingressWithPaths`. */
+export function ingressPath(path: string, pathType = 'Prefix'): string {
+  return (
+    `          - path: ${path}\n            pathType: ${pathType}\n` +
+    '            backend:\n              service:\n                name: web\n' +
+    '                port:\n                  number: 80\n'
+  );
+}
