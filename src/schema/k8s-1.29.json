@@ -8,6 +8,7 @@
   "StatefulSet": "io.k8s.api.apps.v1.StatefulSet",
   "DaemonSet": "io.k8s.api.apps.v1.DaemonSet",
   "Job": "io.k8s.api.batch.v1.Job",
+  "CronJob": "io.k8s.api.batch.v1.CronJob",
   "Service": "io.k8s.api.core.v1.Service",
   "Ingress": "io.k8s.api.networking.v1.Ingress",
   "IngressClass": "io.k8s.api.networking.v1.IngressClass"
@@ -633,6 +634,106 @@
    },
    "type": "object"
   },
+  "io.k8s.api.batch.v1.CronJob": {
+   "description": "CronJob represents the configuration of a single cron job.",
+   "properties": {
+    "apiVersion": {
+     "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.batch.v1.CronJobSpec",
+     "description": "Specification of the desired behavior of a cron job, including the schedule. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
+    },
+    "status": {
+     "$ref": "#/definitions/io.k8s.api.batch.v1.CronJobStatus",
+     "description": "Current status of a cron job. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
+    }
+   },
+   "type": "object",
+   "x-kubernetes-group-version-kind": [
+    {
+     "group": "batch",
+     "kind": "CronJob",
+     "version": "v1"
+    }
+   ]
+  },
+  "io.k8s.api.batch.v1.CronJobSpec": {
+   "description": "CronJobSpec describes how the job execution will look like and when it will actually run.",
+   "properties": {
+    "concurrencyPolicy": {
+     "description": "Specifies how to treat concurrent executions of a Job. Valid values are:\n\n- \"Allow\" (default): allows CronJobs to run concurrently; - \"Forbid\": forbids concurrent runs, skipping next run if previous run hasn't finished yet; - \"Replace\": cancels currently running job and replaces it with a new one",
+     "type": "string"
+    },
+    "failedJobsHistoryLimit": {
+     "description": "The number of failed finished jobs to retain. Value must be non-negative integer. Defaults to 1.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "jobTemplate": {
+     "$ref": "#/definitions/io.k8s.api.batch.v1.JobTemplateSpec",
+     "description": "Specifies the job that will be created when executing a CronJob."
+    },
+    "schedule": {
+     "description": "The schedule in Cron format, see https://en.wikipedia.org/wiki/Cron.",
+     "type": "string"
+    },
+    "startingDeadlineSeconds": {
+     "description": "Optional deadline in seconds for starting the job if it misses scheduled time for any reason.  Missed jobs executions will be counted as failed ones.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "successfulJobsHistoryLimit": {
+     "description": "The number of successful finished jobs to retain. Value must be non-negative integer. Defaults to 3.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "suspend": {
+     "description": "This flag tells the controller to suspend subsequent executions, it does not apply to already started executions.  Defaults to false.",
+     "type": "boolean"
+    },
+    "timeZone": {
+     "description": "The time zone name for the given schedule, see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones. If not specified, this will default to the time zone of the kube-controller-manager process. The set of valid time zone names and the time zone offset is loaded from the system-wide time zone database by the API server during CronJob validation and the controller manager during execution. If no system-wide time zone database can be found a bundled version of the database is used instead. If the time zone name becomes invalid during the lifetime of a CronJob or due to a change in host configuration, the controller will stop creating new new Jobs and will create a system event with the reason UnknownTimeZone. More information can be found in https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/#time-zones",
+     "type": "string"
+    }
+   },
+   "required": [
+    "schedule",
+    "jobTemplate"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.batch.v1.CronJobStatus": {
+   "description": "CronJobStatus represents the current state of a cron job.",
+   "properties": {
+    "active": {
+     "description": "A list of pointers to currently running jobs.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.core.v1.ObjectReference"
+     },
+     "type": "array",
+     "x-kubernetes-list-type": "atomic"
+    },
+    "lastScheduleTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "Information when was the last time the job was successfully scheduled."
+    },
+    "lastSuccessfulTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "Information when was the last time the job successfully completed."
+    }
+   },
+   "type": "object"
+  },
   "io.k8s.api.batch.v1.Job": {
    "description": "Job represents the configuration of a single job.",
    "properties": {
@@ -829,6 +930,20 @@
     "uncountedTerminatedPods": {
      "$ref": "#/definitions/io.k8s.api.batch.v1.UncountedTerminatedPods",
      "description": "uncountedTerminatedPods holds the UIDs of Pods that have terminated but the job controller hasn't yet accounted for in the status counters.\n\nThe job controller creates pods with a finalizer. When a pod terminates (succeeded or failed), the controller does three steps to account for it in the job status:\n\n1. Add the pod UID to the arrays in this field. 2. Remove the pod finalizer. 3. Remove the pod UID from the arrays while increasing the corresponding\n    counter.\n\nOld jobs might not be tracked using this field, in which case the field remains null."
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.batch.v1.JobTemplateSpec": {
+   "description": "JobTemplateSpec describes the data a Job should have when created from a template",
+   "properties": {
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata of the jobs created from this template. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.batch.v1.JobSpec",
+     "description": "Specification of the desired behavior of the job. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
     }
    },
    "type": "object"
@@ -2489,6 +2604,41 @@
    "required": [
     "fieldPath"
    ],
+   "type": "object",
+   "x-kubernetes-map-type": "atomic"
+  },
+  "io.k8s.api.core.v1.ObjectReference": {
+   "description": "ObjectReference contains enough information to let you inspect or modify the referred object.",
+   "properties": {
+    "apiVersion": {
+     "description": "API version of the referent.",
+     "type": "string"
+    },
+    "fieldPath": {
+     "description": "If referring to a piece of an object instead of an entire object, this string should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2]. For example, if the object reference is to a container within a pod, this would take on a value like: \"spec.containers{name}\" (where \"name\" refers to the name of the container that triggered the event) or if no container name is specified \"spec.containers[2]\" (container with index 2 in this pod). This syntax is chosen only to have some well-defined way of referencing a part of an object.",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "name": {
+     "description": "Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+     "type": "string"
+    },
+    "namespace": {
+     "description": "Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/",
+     "type": "string"
+    },
+    "resourceVersion": {
+     "description": "Specific resourceVersion to which this reference is made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency",
+     "type": "string"
+    },
+    "uid": {
+     "description": "UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids",
+     "type": "string"
+    }
+   },
    "type": "object",
    "x-kubernetes-map-type": "atomic"
   },

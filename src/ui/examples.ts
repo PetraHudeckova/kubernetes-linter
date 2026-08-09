@@ -413,4 +413,29 @@ spec:
           args: ["--source", "s3://exports/nightly"]
 `,
   },
+  {
+    id: 'cronjob',
+    label: 'A CronJob with problems',
+    blurb:
+      'A time zone folded into the schedule instead of its own field, a lowercase enum value, a negative history limit, and a jobTemplate whose pod carries the same restart-policy and counter problems a Job would.',
+    yaml: `apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-report
+spec:
+  # "TZ=" belongs in spec.timeZone, not folded into the schedule string.
+  schedule: "TZ=America/New_York 0 6 * * *"
+  concurrencyPolicy: allow
+  successfulJobsHistoryLimit: -1
+  jobTemplate:
+    spec:
+      backoffLimit: -1
+      template:
+        spec:
+          # restartPolicy defaults to Always, which a CronJob's Job cannot use.
+          containers:
+            - name: report
+              image: reporter:2.4.0
+`,
+  },
 ];

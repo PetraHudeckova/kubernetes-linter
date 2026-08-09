@@ -1,10 +1,11 @@
 # kubernetes-linter
 
 An online linter for Kubernetes **Pod**, **Deployment**, **StatefulSet**, **DaemonSet**,
-**Job**, **Service**, **Ingress** and **IngressClass** manifests. Paste YAML, get told what is
-wrong, why it is wrong, and — where the answer is unambiguous — apply the fix with one click.
+**Job**, **CronJob**, **Service**, **Ingress** and **IngressClass** manifests. Paste YAML, get
+told what is wrong, why it is wrong, and — where the answer is unambiguous — apply the fix with
+one click.
 
-The kind comes from the document itself, so a multi-document manifest holding all eight is
+The kind comes from the document itself, so a multi-document manifest holding all nine is
 linted correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
@@ -46,6 +47,7 @@ schema, which OpenAPI cannot express:
 | StatefulSet | the same selector and template checks, plus a `serviceName` that is not a DNS label, `rollingUpdate` under an `OnDelete` strategy, a negative `partition` or `ordinals.start`, `maxUnavailable` at zero or above 100%, and volume claim templates that are unnamed, misnamed, duplicated or shadowing a volume of the pod template |
 | DaemonSet | the same selector and template checks, plus a rollout that sets `maxSurge` alongside a non-zero `maxUnavailable` (a DaemonSet does one or the other, never both), both of them at zero, a percentage above 100, a `rollingUpdate` block an `OnDelete` strategy will ignore, and a read-write GCE persistent disk, which cannot be attached to every node |
 | Job | a `restartPolicy` the template leaves to default to `Always` (a Job accepts only `OnFailure` or `Never`), a hand-written `selector` without `manualSelector`, one that does not match the template's labels, negative counters, an `Indexed` Job without `completions` or whose name cannot become a Pod hostname once the index is appended, per-index fields on a `NonIndexed` one, `maxFailedIndexes` without `backoffLimitPerIndex` or above `completions`, a pod failure policy rule matching on both or neither of `onExitCodes` and `onPodConditions`, exit codes that are empty, unsorted, repeated or zero under `In`, a `containerName` no container answers to, `FailIndex` without per-index retries, `podReplacementPolicy` other than `Failed` beside a failure policy, a success policy on a `NonIndexed` Job or with rules that say nothing, a malformed `succeededIndexes`, and a `managedBy` that is not a domain-prefixed path |
+| CronJob | a missing or empty `schedule`, one with the wrong number of fields, a field outside its range, or an unrecognised descriptor, a `TZ=`/`CRON_TZ=` prefix that belongs in `timeZone` instead, a `timeZone` that is malformed, `"Local"` or not in the IANA database, negative deadlines or history limits, a name over 52 characters (the controller appends `-<timestamp>` to make each run's Job name), and a `jobTemplate.spec.selector` or `manualSelector: true` — both always rejected, since every Job it creates is fresh. Everything a Job's own spec checks — counters, completion mode, failure and success policies, `managedBy`, the template's `restartPolicy` — is checked the same way one level deeper, under `jobTemplate.spec` |
 | Service | a name that is not an RFC 1035 label, a missing or duplicated port, a `targetPort` that names nothing a container port could be called, a `nodePort` on a type that has none (and one outside the default 30000-32767 range), a headless `NodePort` or `LoadBalancer`, an `ExternalName` with a cluster IP or without a hostname, load balancer and traffic policy fields on a type that ignores them, malformed cluster, external and source-range addresses, and dual-stack families that contradict `ipFamilyPolicy` |
 | Ingress | neither `rules` nor a `defaultBackend`, a rule host that is an IP address or a misplaced wildcard, a rule with no `http` block, a relative path or one containing `//`, `/./`, `/../` or an escaped slash, a host and path routed twice, a backend naming both a Service and a resource or neither, a Service port given as both a name and a number or as neither, a certificate host that no rule routes, and the `kubernetes.io/ingress.class` annotation that `spec.ingressClassName` replaced |
 | IngressClass | a `metadata.namespace` on a cluster-scoped object, a missing `controller` or one that is not a domain-prefixed path, a `parameters` reference whose `scope` and `namespace` contradict each other, an empty `apiGroup`, `kind` or `name`, a `kind` or `name` that could not be a URL path segment, and an `ingressclass.kubernetes.io/is-default-class` annotation whose value is not the exact string the apiserver reads |
@@ -142,9 +144,13 @@ pod template leaves `podTemplate` out of its descriptor instead, and the PodSpec
 (`POD_RULES` in `registry.ts`) are skipped for it; one that lives outside namespaces sets
 `clusterScoped` there too, which is what makes `metadata.namespace` an error rather than a
 name to validate. Each kind keeps its own rule module — `rules/deployment.ts`,
-`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/job.ts`, `rules/service.ts`,
-`rules/ingress.ts`, `rules/ingressclass.ts` — since what the apiserver checks beyond the pod
-template is particular to it.
+`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/job.ts`, `rules/cronjob.ts`,
+`rules/service.ts`, `rules/ingress.ts`, `rules/ingressclass.ts` — since what the apiserver
+checks beyond the pod template is particular to it. CronJob is the one exception by design: its
+`spec.jobTemplate.spec` is a full JobSpec that the apiserver validates with the very same
+function a Job's own spec goes through, so `rules/job.ts` exports `checkJobSpec` for
+`rules/cronjob.ts` to call against the nested spec, rather than duplicating those checks under
+a second set of rule ids.
 
 ## Deployment
 

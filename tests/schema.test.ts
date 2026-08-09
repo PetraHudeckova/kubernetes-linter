@@ -119,11 +119,11 @@ describe('schema conformance', () => {
     });
 
     it('skips the rules for a kind it does not carry, with an explanation', () => {
-      const result = findings(VALID_POD.replace('kind: Pod', 'kind: CronJob'));
+      const result = findings(VALID_POD.replace('kind: Pod', 'kind: ReplicaSet'));
       expect(result.map((finding) => finding.ruleId)).toEqual(['lint/unsupported-kind']);
       expect(result[0]?.severity).toBe('info');
       expect(result[0]?.message).toContain(
-        'Pod, Deployment, StatefulSet, DaemonSet, Job, Service, Ingress and IngressClass',
+        'Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, Service, Ingress and IngressClass',
       );
     });
 
@@ -250,6 +250,24 @@ describe('field descriptions', () => {
     expect(job.describe(['spec', 'strategy'])).toBeUndefined();
   });
 
+  it('resolves a CronJob field nested under its JobTemplateSpec', () => {
+    const cronJob = schema.for('CronJob')!;
+    expect(
+      cronJob.describe([
+        'spec',
+        'jobTemplate',
+        'spec',
+        'template',
+        'spec',
+        'containers',
+        0,
+        'imagePullPolicy',
+      ])?.type,
+    ).toBe('string');
+    expect(cronJob.describe(['spec', 'schedule'])?.type).toBe('string');
+    expect(cronJob.describe(['spec', 'strategy'])).toBeUndefined();
+  });
+
   it('carries a root for every supported kind', () => {
     expect(schema.kinds).toEqual([
       'Pod',
@@ -257,10 +275,11 @@ describe('field descriptions', () => {
       'StatefulSet',
       'DaemonSet',
       'Job',
+      'CronJob',
       'Service',
       'Ingress',
       'IngressClass',
     ]);
-    expect(schema.for('CronJob')).toBeUndefined();
+    expect(schema.for('ReplicaSet')).toBeUndefined();
   });
 });

@@ -1,5 +1,6 @@
 import type { Path } from './types.js';
 import type { Rule } from './rules/context.js';
+import { cronJobRule } from './rules/cronjob.js';
 import { daemonSetRule } from './rules/daemonset.js';
 import { deploymentRule } from './rules/deployment.js';
 import { ingressRule } from './rules/ingress.js';
@@ -92,6 +93,17 @@ export const KINDS: Record<string, KindDescriptor> = {
     kind: 'Job',
     podTemplate: POD_TEMPLATE,
     rules: [jobRule],
+  },
+  CronJob: {
+    kind: 'CronJob',
+    // A CronJob's pod template sits one JobTemplateSpec deeper than a Job's:
+    // spec.jobTemplate wraps the same JobSpec a Job carries at its own spec,
+    // so POD_TEMPLATE's paths do not fit and this kind needs its own literal.
+    podTemplate: {
+      specPath: ['spec', 'jobTemplate', 'spec', 'template', 'spec'],
+      metadataPath: ['spec', 'jobTemplate', 'spec', 'template', 'metadata'],
+    },
+    rules: [cronJobRule],
   },
   Service: {
     kind: 'Service',
