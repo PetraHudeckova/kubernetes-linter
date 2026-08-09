@@ -1,6 +1,6 @@
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, type Extension } from '@codemirror/state';
-import { hoverTooltip, keymap } from '@codemirror/view';
+import { EditorState, StateEffect, StateField, type Extension } from '@codemirror/state';
+import { Decoration, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import { yaml } from '@codemirror/lang-yaml';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { indentWithTab } from '@codemirror/commands';
@@ -8,6 +8,38 @@ import { schema } from './lint/index.js';
 import { pathAtOffset } from './lint/parse.js';
 import type { LocatedFinding } from './lint/types.js';
 import { applyFix } from './lint/fix.js';
+import { changedLineNumbers } from './ui/diff.js';
+
+/**
+ * Mark the lines a fix just rewrote. Applying a fix replaces the whole
+ * document, so without this the editor gives no sign that anything happened —
+ * especially when the problem count lands on the same number by coincidence.
+ */
+export const markChangedLines = StateEffect.define<number[]>();
+
+const changedLines = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (!effect.is(markChangedLines)) continue;
+      const lines = effect.value;
+      if (lines.length === 0) return Decoration.none;
+
+      const doc = transaction.state.doc;
+      return Decoration.set(
+        lines
+          .filter((line) => line >= 1 && line <= doc.lines)
+          .map((line) => changedLineMark.range(doc.line(line).from)),
+        true,
+      );
+    }
+    // Any other edit means the highlight no longer describes the document.
+    return transaction.docChanged ? Decoration.none : value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const changedLineMark = Decoration.line({ class: 'cm-changed-line' });
 
 export interface EditorHooks {
   /** Called on every document change with the current text. */
@@ -31,6 +63,7 @@ export function createEditor(parent: HTMLElement, initialText: string, hooks: Ed
         yaml(),
         lintGutter(),
         diagnostics,
+        changedLines,
         fieldTooltip,
         keymap.of([indentWithTab]),
         EditorView.lineWrapping,
@@ -74,6 +107,7 @@ function toDiagnostic(view: EditorView, finding: LocatedFinding): Diagnostic {
           if (updated === text) return;
           target.dispatch({
             changes: { from: 0, to: target.state.doc.length, insert: updated },
+            effects: markChangedLines.of(changedLineNumbers(text, updated)),
           });
         },
       },
@@ -130,6 +164,10 @@ const theme = EditorView.theme({
     lineHeight: '1.6',
   },
   '.cm-content': { paddingBlock: '0.75rem' },
+  '.cm-changed-line': {
+    backgroundColor: 'var(--change-highlight)',
+    boxShadow: 'inset 3px 0 0 var(--ok)',
+  },
   '.cm-field-tooltip': {
     maxWidth: '32rem',
     padding: '0.6rem 0.75rem',
