@@ -289,3 +289,35 @@ export function ingressPath(path: string, pathType = 'Prefix'): string {
     '                port:\n                  number: 80\n'
   );
 }
+
+/** A minimal valid IngressClass that individual tests mutate. */
+export const VALID_INGRESS_CLASS = `apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+spec:
+  controller: k8s.io/ingress-nginx
+  parameters:
+    apiGroup: k8s.example.com
+    kind: IngressParameters
+    name: external-lb
+    scope: Namespace
+    namespace: ingress-nginx
+`;
+
+/**
+ * Build an IngressClass from a fragment of IngressClassSpec. Like `ingress()`
+ * the fragment is the whole spec, and like a Service most of what is checked is
+ * which fields may sit next to which. Fragments are indented two spaces,
+ * matching `pod()`.
+ */
+export function ingressClass(specFragment: string, metadataFragment = '  name: nginx\n'): string {
+  return `apiVersion: networking.k8s.io/v1\nkind: IngressClass\nmetadata:\n${metadataFragment}spec:\n${specFragment}`;
+}
+
+/** An IngressClass whose parameters reference carries the given fragment. */
+export function ingressClassParameters(parametersFragment: string): string {
+  return ingressClass(`  controller: k8s.io/ingress-nginx\n  parameters:\n${parametersFragment}`);
+}

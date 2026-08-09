@@ -123,7 +123,7 @@ describe('schema conformance', () => {
       expect(result.map((finding) => finding.ruleId)).toEqual(['lint/unsupported-kind']);
       expect(result[0]?.severity).toBe('info');
       expect(result[0]?.message).toContain(
-        'Pod, Deployment, StatefulSet, DaemonSet, Service and Ingress',
+        'Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress and IngressClass',
       );
     });
 
@@ -238,6 +238,12 @@ describe('field descriptions', () => {
     expect(ingress.describe(['spec', 'ports'])).toBeUndefined();
   });
 
+  it('resolves an IngressClass field, which the Ingress root does not reach', () => {
+    const ingressClass = schema.for('IngressClass')!;
+    expect(ingressClass.describe(['spec', 'parameters', 'scope'])?.type).toBe('string');
+    expect(ingressClass.describe(['spec', 'rules'])).toBeUndefined();
+  });
+
   it('carries a root for every supported kind', () => {
     expect(schema.kinds).toEqual([
       'Pod',
@@ -246,6 +252,7 @@ describe('field descriptions', () => {
       'DaemonSet',
       'Service',
       'Ingress',
+      'IngressClass',
     ]);
     expect(schema.for('Job')).toBeUndefined();
   });

@@ -96,7 +96,7 @@ Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must b
 `ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
 wrong node on a Deployment and silently close the gate on every version.
 
-### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress)
+### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress, IngressClass)
 
 The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
 reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
@@ -105,15 +105,19 @@ no root for still yields `unsupportedKind` and a `lint/unsupported-kind` note. B
 bundle carries every root, a multi-document manifest can mix kinds with no extra chunk load —
 which is what keeps `lint()` synchronous.
 
-A `KindDescriptor` is only `{ kind, podTemplate?, nameFormat?, rules }`. The root `$ref` is
+A `KindDescriptor` is only `{ kind, podTemplate?, nameFormat?, clusterScoped?, rules }`. The
+root `$ref` is
 deliberately *not* in it: that lives in the generated bundle, so the generator stays the
 single source of truth for definition names — and `apiVersion` is derived from that definition
 name too, never declared. `nameFormat` defaults to `'subdomain'`, is `'label'` for a kind whose
 name prefixes generated Pod names (StatefulSet) and `'rfc1035'` for a Service, whose name has
-to start with a letter; `metadata.ts` reads it.
+to start with a letter; `metadata.ts` reads it. `clusterScoped` is the other thing that module
+reads: on a kind that lives outside namespaces (IngressClass) a `metadata.namespace` is not a
+name to validate but a field the apiserver forbids, so it is reported as `meta/namespace-not-allowed`
+and the format check is skipped.
 
 `podTemplate` is `{ specPath, metadataPath, claimTemplatesPath? }`, and **it is optional**:
-neither a Service nor an Ingress describes a Pod at all. Its absence is what makes `POD_RULES` skip the kind
+a Service, an Ingress and an IngressClass describe no Pod at all. Its absence is what makes `POD_RULES` skip the kind
 (`index.ts`), so a kind with no pod template is checked by layer 1, by `RULES` — the
 document-level rules, `metadata.ts` and `enums.ts` — and by its own module, and by nothing
 else. `claimTemplatesPath` is the one concession to a kind that generates volumes: a
@@ -125,9 +129,10 @@ is not reported as undeclared.
 `ctx.meta(...)` prefixes `podTemplate.metadataPath`, and `ctx.field(...)` renders a dotted name
 for a message. There are no `['spec', …]` literals left in the PodSpec rules; reintroducing one
 silently breaks Deployment. The deliberate exceptions are `rules/deployment.ts`,
-`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts` and `rules/ingress.ts`, which
-address `spec.selector`, `spec.strategy`, `spec.updateStrategy`, `spec.ports`, `spec.rules` and
-the like — fields of the object itself, not of any pod spec.
+`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts`, `rules/ingress.ts` and
+`rules/ingressclass.ts`, which address `spec.selector`, `spec.strategy`, `spec.updateStrategy`,
+`spec.ports`, `spec.rules`, `spec.controller` and the like — fields of the object itself, not of
+any pod spec.
 
 `ctx.doc` is the document root (used by `metadata.ts`, `enums.ts` and every per-kind module);
 `ctx.spec` is the PodSpec wherever this kind keeps it, and `{}` for a kind with no pod
@@ -135,8 +140,8 @@ template. `ContainerRef.path` already carries the prefix, so any rule built on `
 is kind-correct for free.
 
 Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
-and `deployment/*` / `statefulset/*` / `daemonset/*` / `service/*` / `ingress/*` for checks on
-the object itself. The two document-level rules are named for what they check rather than for a kind,
+and `deployment/*` / `statefulset/*` / `daemonset/*` / `service/*` / `ingress/*` /
+`ingressclass/*` for checks on the object itself. The two document-level rules are named for what they check rather than for a kind,
 since they run for every kind including one with no Pod: `meta/*` in `metadata.ts` and
 `enum/*` in `enums.ts`. `Schema` is per version and holds every root; `Schema.for(kind)`
 returns the `KindSchema` view that both lint layers actually use.
@@ -167,6 +172,16 @@ optional fields. It reuses `isIPAddress` to refuse an address where a rule wants
 `isWildcardDNS1123Subdomain` in `k8s/names.ts` for the one leading `*.` label a host may carry.
 Nothing in it is version-gated: networking/v1 Ingress has been served unchanged since 1.19.
 
+`ingressclass.ts` is the third, and the reverse case: `IngressClassSpec` has no required fields
+at all, so layer 1 covers almost nothing and even `spec.controller` — which the apiserver does
+require — is the module's to report. Everything else turns on `parameters.scope`, resolved the
+way `service.ts` resolves `spec.type`: defaulting (to `Cluster`, as the API does) and left
+`undefined` when the value is not one the enum table knows, since a scope that means nothing
+says nothing about the `namespace` beside it. The last check is not a validation rule at all —
+`ingressclass.kubernetes.io/is-default-class` is compared to the string `"true"` by the
+admission plugin that reads it, so `"True"` is a class that is quietly not the default. Like
+Ingress, none of it is version-gated.
+
 **Adding a further kind**, in order:
 
 1. A root in `ROOTS` (`scripts/generate-schema.mjs`), then `npm run gen:schema` to regenerate
@@ -174,9 +189,9 @@ Nothing in it is version-gated: networking/v1 Ingress has been served unchanged 
    supported release, so a kind younger than the `OLDEST_MINOR` floor cannot be added without
    moving that floor.
 2. A descriptor in `KINDS` (`src/lint/kinds.ts`) — for anything carrying a PodTemplateSpec that
-   is the shared `POD_TEMPLATE` constant, plus `nameFormat`/`claimTemplatesPath` if the kind
-   needs them. For a kind that describes no Pod, leave `podTemplate` out entirely; that is the
-   whole switch.
+   is the shared `POD_TEMPLATE` constant, plus `nameFormat`/`claimTemplatesPath`/`clusterScoped`
+   if the kind needs them. For a kind that describes no Pod, leave `podTemplate` out entirely;
+   that is the whole switch.
 3. A rule module `src/lint/rules/<kind>.ts` for the kind's own fields, with `<kind>/*`
    rule IDs, wired into that descriptor's `rules` — *not* into `RULES` or `POD_RULES` in
    `registry.ts`, which are the every-kind and every-pod-kind lists. Nothing is needed for the
@@ -197,12 +212,13 @@ The reusable machinery — the schema walk, `walkFields`,
 ### Schema bundles
 
 `scripts/generate-schema.mjs` unions the transitive `$ref` closure of every root in `ROOTS`
-(182 defs at 1.36, ~325 KB on disk, ~49 KB brotli) and writes `{ k8sVersion, source, generatedAt,
+(185 defs at 1.36, ~330 KB on disk, ~49 KB brotli) and writes `{ k8sVersion, source, generatedAt,
 roots, definitions }`. One file per version rather than one per kind: the Deployment closure is
 a near-total superset of Pod's, the StatefulSet one adds little beyond `PersistentVolumeClaim`,
 and the DaemonSet one adds only its own spec and update strategy, so per-kind files would be
-near-duplicates. Service and Ingress are the two roots that share nothing below `ObjectMeta`,
-and each still adds only about a dozen definitions. API descriptions are kept on purpose — they are what the hover tooltip and
+near-duplicates. Service, Ingress and IngressClass are the roots that share nothing below
+`ObjectMeta`, and the first two still add only about a dozen definitions each while
+IngressClass adds two. API descriptions are kept on purpose — they are what the hover tooltip and
 most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,
@@ -218,7 +234,8 @@ them property-by-property would produce nonsense.
   narrow with `asString`/`asNumber`/`asObject`/`asArray` from `rules/context.ts` and skip
   wrong-shaped values silently.
 - Rule IDs are `pod/<thing>` for PodSpec checks and `deployment/<thing>` / `statefulset/<thing>`
-  / `daemonset/<thing>` / `service/<thing>` for checks on the object itself; the rules that run
+  / `daemonset/<thing>` / `service/<thing>` / `ingress/<thing>` / `ingressclass/<thing>` for
+  checks on the object itself; the rules that run
   for every kind are `meta/<thing>` and `enum/<thing>`; schema-layer IDs are `schema/<thing>`;
   parser IDs are `yaml/<thing>`.
 - Findings explain *why*, usually by quoting the field's own API description and pulling its

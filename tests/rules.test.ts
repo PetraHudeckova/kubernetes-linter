@@ -3,6 +3,7 @@ import {
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
   VALID_INGRESS,
+  VALID_INGRESS_CLASS,
   VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSet,
@@ -13,6 +14,8 @@ import {
   expectRule,
   expectRules,
   ingress,
+  ingressClass,
+  ingressClassParameters,
   ingressPath,
   ingressWithPaths,
   pod,
@@ -2093,6 +2096,202 @@ describe('ingress', () => {
     // An Ingress has no pod template, so the shared rules do not run for it at
     // all — a "containers" key here is an unknown field, nothing more.
     const ids = ruleIds(ingress('  containers:\n    - name: web\n      image: a\n'));
+    expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
+    expect(ids).toContain('schema/unknown-field');
+  });
+});
+
+describe('ingressclass', () => {
+  it('accepts a valid IngressClass', () => {
+    expectRules(VALID_INGRESS_CLASS, []);
+  });
+
+  it('rejects a namespace, since the kind is cluster-scoped', () => {
+    const finding = expectRule(
+      ingressClass('  controller: k8s.io/ingress-nginx\n', '  name: nginx\n  namespace: kube-system\n'),
+      'meta/namespace-not-allowed',
+    );
+    expect(finding.fix?.ops).toEqual([{ op: 'delete', path: ['metadata', 'namespace'] }]);
+  });
+
+  it('leaves a namespace alone on a namespaced kind', () => {
+    expectNoRule(
+      service('  ports:\n    - port: 80\n', '  name: web\n  namespace: kube-system\n'),
+      'meta/namespace-not-allowed',
+    );
+  });
+
+  describe('controller', () => {
+    it('requires one', () => {
+      const finding = expectRule(
+        'apiVersion: networking.k8s.io/v1\nkind: IngressClass\nmetadata:\n  name: nginx\n',
+        'ingressclass/missing-controller',
+      );
+      expect(finding.path).toEqual(['spec']);
+    });
+
+    it('treats an empty one as none', () => {
+      const finding = expectRule(ingressClass('  controller: ""\n'), 'ingressclass/missing-controller');
+      expect(finding.path).toEqual(['spec', 'controller']);
+    });
+
+    it('rejects a bare name with no domain prefix', () => {
+      const finding = expectRule(ingressClass('  controller: nginx\n'), 'ingressclass/invalid-controller');
+      expect(finding.message).toContain('domain-prefixed path');
+    });
+
+    it('rejects a domain prefix that is not a DNS subdomain', () => {
+      const finding = expectRule(
+        ingressClass('  controller: NGINX.io/ingress\n'),
+        'ingressclass/invalid-controller',
+      );
+      expect(finding.message).toContain('"NGINX.io"');
+    });
+
+    it('rejects a path carrying characters a URL could not', () => {
+      const finding = expectRule(
+        ingressClass('  controller: "k8s.io/ingress nginx"\n'),
+        'ingressclass/invalid-controller',
+      );
+      expect(finding.message).toContain('valid path');
+    });
+
+    it('accepts the punctuation a URL path may carry', () => {
+      expectRules(ingressClass('  controller: k8s.io/ingress-nginx/v1_2.3~beta\n'), []);
+    });
+
+    it('rejects one longer than 250 characters', () => {
+      expectRule(
+        ingressClass(`  controller: k8s.io/${'a'.repeat(250)}\n`),
+        'ingressclass/controller-too-long',
+      );
+    });
+  });
+
+  describe('parameters', () => {
+    it('rejects a namespace under the default scope, which is Cluster', () => {
+      const finding = expectRule(
+        ingressClassParameters('    kind: IngressParameters\n    name: p\n    namespace: ns\n'),
+        'ingressclass/parameters-namespace-not-allowed',
+      );
+      expect(finding.message).toContain('defaults to "Cluster"');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'parameters', 'scope'], value: 'Namespace' },
+      ]);
+    });
+
+    it('rejects a namespace beside an explicit Cluster scope', () => {
+      const finding = expectRule(
+        ingressClassParameters(
+          '    kind: IngressParameters\n    name: p\n    scope: Cluster\n    namespace: ns\n',
+        ),
+        'ingressclass/parameters-namespace-not-allowed',
+      );
+      expect(finding.message).toContain('is "Cluster"');
+    });
+
+    it('requires a namespace under the Namespace scope', () => {
+      expectRule(
+        ingressClassParameters('    kind: IngressParameters\n    name: p\n    scope: Namespace\n'),
+        'ingressclass/missing-parameters-namespace',
+      );
+    });
+
+    it('requires that namespace to be a DNS label', () => {
+      expectRule(
+        ingressClassParameters(
+          '    kind: IngressParameters\n    name: p\n    scope: Namespace\n    namespace: Ingress_NS\n',
+        ),
+        'ingressclass/invalid-parameters-namespace',
+      );
+    });
+
+    it('leaves an unrecognised scope to the enum rule', () => {
+      // Without knowing which scope was meant there is nothing to say about
+      // the namespace sitting beside it.
+      const yaml = ingressClassParameters(
+        '    kind: IngressParameters\n    name: p\n    scope: namespace\n    namespace: ns\n',
+      );
+      expectRule(yaml, 'enum/invalid-value');
+      expectNoRule(yaml, 'ingressclass/parameters-namespace-not-allowed');
+      expectNoRule(yaml, 'ingressclass/missing-parameters-namespace');
+    });
+
+    it('rejects an empty kind or name, which the schema only sees the presence of', () => {
+      for (const fragment of ['    kind: ""\n    name: p\n', '    kind: K\n    name: ""\n']) {
+        expectRule(ingressClassParameters(fragment), 'ingressclass/empty-parameters-reference');
+      }
+    });
+
+    it('rejects a kind or name that could not be a URL path segment', () => {
+      for (const fragment of ['    kind: a/b\n    name: p\n', '    kind: K\n    name: ".."\n']) {
+        expectRule(ingressClassParameters(fragment), 'ingressclass/invalid-parameters-reference');
+      }
+    });
+
+    it('rejects an empty apiGroup, since the core group is spelled by omission', () => {
+      const finding = expectRule(
+        ingressClassParameters('    apiGroup: ""\n    kind: IngressParameters\n    name: p\n'),
+        'ingressclass/invalid-parameters-api-group',
+      );
+      expect(finding.fix?.ops).toEqual([{ op: 'delete', path: ['spec', 'parameters', 'apiGroup'] }]);
+    });
+
+    it('rejects an apiGroup that is not a DNS subdomain', () => {
+      expectRule(
+        ingressClassParameters('    apiGroup: K8s.Example\n    kind: IngressParameters\n    name: p\n'),
+        'ingressclass/invalid-parameters-api-group',
+      );
+    });
+
+    it('accepts a cluster-scoped reference with no namespace', () => {
+      expectRules(ingressClassParameters('    kind: IngressParameters\n    name: p\n'), []);
+    });
+  });
+
+  describe('the default class annotation', () => {
+    const annotated = (value: string) =>
+      ingressClass(
+        '  controller: k8s.io/ingress-nginx\n',
+        `  name: nginx\n  annotations:\n    ingressclass.kubernetes.io/is-default-class: ${value}\n`,
+      );
+
+    it('accepts the two values the admission plugin reads', () => {
+      expectRules(annotated('"true"'), []);
+      expectRules(annotated('"false"'), []);
+    });
+
+    it('warns about a value differing only in case, and offers to correct it', () => {
+      const finding = expectRule(annotated('"True"'), 'ingressclass/invalid-default-annotation');
+      expect(finding.severity).toBe('warning');
+      expect(finding.fix).toEqual({
+        title: 'Change to "true"',
+        safe: true,
+        ops: [
+          {
+            op: 'set',
+            path: ['metadata', 'annotations', 'ingressclass.kubernetes.io/is-default-class'],
+            value: 'true',
+          },
+        ],
+      });
+    });
+
+    it('offers no fix for a value that only resembles a boolean', () => {
+      const finding = expectRule(annotated('"yes"'), 'ingressclass/invalid-default-annotation');
+      expect(finding.fix).toBeUndefined();
+    });
+
+    it('leaves an unquoted boolean to the schema layer, which sees a type error', () => {
+      // Annotations are strings, so YAML's own `true` is not one at all.
+      const yaml = annotated('true');
+      expectRule(yaml, 'schema/type');
+      expectNoRule(yaml, 'ingressclass/invalid-default-annotation');
+    });
+  });
+
+  it('runs none of the pod spec rules', () => {
+    const ids = ruleIds(ingressClass('  containers:\n    - name: web\n      image: a\n'));
     expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
     expect(ids).toContain('schema/unknown-field');
   });

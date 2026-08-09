@@ -3,6 +3,7 @@ import type { Rule } from './rules/context.js';
 import { daemonSetRule } from './rules/daemonset.js';
 import { deploymentRule } from './rules/deployment.js';
 import { ingressRule } from './rules/ingress.js';
+import { ingressClassRule } from './rules/ingressclass.js';
 import { serviceRule } from './rules/service.js';
 import { statefulSetRule } from './rules/statefulset.js';
 
@@ -48,6 +49,13 @@ export interface KindDescriptor {
    * Defaults to "subdomain".
    */
   nameFormat?: 'subdomain' | 'label' | 'rfc1035';
+  /**
+   * Set for a kind that lives outside any namespace, so `metadata.namespace`
+   * is not merely unusual but forbidden — the apiserver rejects it with "not
+   * allowed on this type". `metadata.ts` reads it; everything else about a
+   * cluster-scoped kind is the same.
+   */
+  clusterScoped?: boolean;
   /** Rules that only make sense for this kind, run after the shared ones. */
   rules: Rule[];
 }
@@ -87,5 +95,10 @@ export const KINDS: Record<string, KindDescriptor> = {
   Ingress: {
     kind: 'Ingress',
     rules: [ingressRule],
+  },
+  IngressClass: {
+    kind: 'IngressClass',
+    clusterScoped: true,
+    rules: [ingressClassRule],
   },
 };
