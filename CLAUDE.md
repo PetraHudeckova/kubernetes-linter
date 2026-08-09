@@ -39,7 +39,8 @@ it in the URL fragment).
    that OpenAPI cannot express (cross-field consistency, name formats, enum values).
 
 Adding a rule means writing a `Rule` in `src/lint/rules/` and appending it to `RULES` in
-`registry.ts`. Nothing else is wired by hand.
+`registry.ts` — or, for a rule that only applies to one kind, to that kind's `rules` in
+`src/lint/kinds.ts`. Nothing else is wired by hand.
 
 Scope discipline: the project deliberately reports **only** what the apiserver would reject or
 what is a genuine misconfiguration. No security posture, no house style.
@@ -69,10 +70,10 @@ so bare `no`/`on`/`off` must resolve to booleans here too and get reported as ty
 ### Kubernetes versions (1.25–1.36)
 
 There is no version table in TypeScript. `src/lint/schemas.ts` derives `AVAILABLE_VERSIONS`
-from an `import.meta.glob` over `src/schema/pod-*.json`, and `DEFAULT_VERSION` from the
+from an `import.meta.glob` over `src/schema/k8s-*.json`, and `DEFAULT_VERSION` from the
 `k8sVersion` field of the statically imported default bundle. The only bounds live in
 `scripts/generate-schema.mjs` (`OLDEST_MINOR` / `NEWEST_MINOR`). Dropping in a new
-`src/schema/pod-1.37.json` makes it appear in the picker; moving the default means changing
+`src/schema/k8s-1.37.json` makes it appear in the picker; moving the default means changing
 the static import.
 
 The glob must stay lazy — Vite rewrites its chunk URLs for the configured `base`, which a
@@ -90,28 +91,48 @@ table in `rules/enums.ts`, and any version-gated rule advice. Known limitation: 
 added in a later release are accepted on older ones, because the table has no per-value
 `since`.
 
-### Pod is hardcoded, not pluggable
+Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must be written
+`ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
+wrong node on a Deployment and silently close the gate on every version.
 
-There is no kind abstraction. `Pod` is the single root of the program:
-`ROOT_DEF = 'io.k8s.api.core.v1.Pod'` in the generator, `pod-*` in the schema glob and
-filenames, `RuleContext { pod, spec, containers }` in `rules/context.ts`, and ~38 literal
-`['spec', …]` path prefixes across the rule modules. `lintSchema()` bails out with
-`unsupportedKind` for anything else, which `index.ts` turns into a `lint/unsupported-kind`
-note. The expected kind and apiVersion *are* already read generically from
-`x-kubernetes-group-version-kind`, but the surrounding prose is Pod-specific.
+### Kinds (Pod, Deployment)
 
-Supporting a second kind (e.g. Deployment, whose PodSpec sits at `spec.template.spec`) means
-introducing that abstraction — most naturally a kind descriptor carrying the root ref, the
-schema-file prefix, and the path prefix to the pod spec, with the literals in the rules
-replaced by that prefix. The reusable machinery — the schema walk, `walkFields`, `enums.ts`,
-`fix.ts`, `parse.ts`, `k8s/*` — is already kind-agnostic; `walkFields` keys on the resolved
+The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
+reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
+looks that up in `KINDS` (`src/lint/kinds.ts`) to get a `KindDescriptor`. A kind the bundle has
+no root for still yields `unsupportedKind` and a `lint/unsupported-kind` note. Because one
+bundle carries every root, a multi-document manifest can mix kinds with no extra chunk load —
+which is what keeps `lint()` synchronous.
+
+A `KindDescriptor` is only `{ kind, specPath, podMetadataPath, rules }`. The root `$ref` is
+deliberately *not* in it: that lives in the generated bundle, so the generator stays the single
+source of truth for definition names.
+
+**Rules address the PodSpec relatively.** `ctx.at(...)` prefixes `specPath`, `ctx.meta(...)`
+prefixes `podMetadataPath`, and `ctx.field(...)` renders a dotted name for a message. There are
+no `['spec', …]` literals left in `rules/`; reintroducing one silently breaks Deployment. The
+one deliberate exception is `rules/deployment.ts`, which addresses `spec.selector` and
+`spec.strategy` — fields of the Deployment itself, not of any pod spec.
+
+`ctx.doc` is the document root (used by `metadata.ts` and `enums.ts`); `ctx.spec` is the
+PodSpec wherever this kind keeps it. `ContainerRef.path` already carries the prefix, so any
+rule built on `ctx.containers` is kind-correct for free.
+
+Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
+and `deployment/*` for checks on the Deployment itself. `Schema` is per version and holds every
+root; `Schema.for(kind)` returns the `KindSchema` view that both lint layers actually use.
+
+Adding a third kind: a root in `scripts/generate-schema.mjs`, a descriptor in `kinds.ts`, and
+whatever rules are unique to it. The reusable machinery — the schema walk, `walkFields`,
+`enums.ts`, `fix.ts`, `parse.ts`, `k8s/*` — is kind-agnostic; `walkFields` keys on the resolved
 `$ref` owner (`Container.imagePullPolicy`), so it stays correct wherever a type is reused.
 
 ### Schema bundles
 
-`scripts/generate-schema.mjs` computes the transitive `$ref` closure from the root definition
-(134 defs at 1.36, ~240 KB on disk, ~33 KB brotli) and writes `{ k8sVersion, source, generatedAt, root,
-definitions }`. API descriptions are kept on purpose — they are what the hover tooltip and
+`scripts/generate-schema.mjs` unions the transitive `$ref` closure of every root in `ROOTS`
+(141 defs at 1.36, ~250 KB on disk, ~35 KB brotli) and writes `{ k8sVersion, source, generatedAt,
+roots, definitions }`. One file per version rather than one per kind: the Deployment closure is
+a near-total superset of Pod's, so a second file would be a near-duplicate. API descriptions are kept on purpose — they are what the hover tooltip and
 most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,
@@ -126,12 +147,13 @@ them property-by-property would produce nonsense.
 - Rules never re-report what layer 1 already caught. Everything out of YAML is `unknown`;
   narrow with `asString`/`asNumber`/`asObject`/`asArray` from `rules/context.ts` and skip
   wrong-shaped values silently.
-- Rule IDs are `pod/<thing>`; schema-layer IDs are `schema/<thing>`; parser IDs are `yaml/<thing>`.
+- Rule IDs are `pod/<thing>` for PodSpec checks and `deployment/<thing>` for checks on the
+  Deployment itself; schema-layer IDs are `schema/<thing>`; parser IDs are `yaml/<thing>`.
 - Findings explain *why*, usually by quoting the field's own API description and pulling its
   "More info:" URL via `docsUrlFrom()`.
 - Comments in this codebase explain non-obvious decisions rather than restating code. Match
   that when editing.
 - `EXAMPLES` in `src/ui/examples.ts` is load-bearing: `tests/locations.test.ts` iterates it
   (the `valid` example must lint clean, others must not, and safe fixes must not make things
-  worse) and `tests/versions.test.ts` lints `valid` on all 12 versions as a regeneration
-  tripwire.
+  worse) and indexes entries positionally, so append rather than insert. `tests/versions.test.ts`
+  lints `valid` and `VALID_DEPLOYMENT` on all 12 versions as a regeneration tripwire.

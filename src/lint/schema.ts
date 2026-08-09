@@ -21,9 +21,17 @@ export interface SchemaBundle {
   k8sVersion: string;
   source: string;
   generatedAt: string;
-  root: string;
+  /** Kind name -> root definition, e.g. `Pod` -> `io.k8s.api.core.v1.Pod`. */
+  roots: Record<string, string>;
   definitions: Record<string, SchemaNode>;
 }
+
+/**
+ * The kind a document is checked as when it declares none. A manifest with no
+ * `kind` is reported either way; this only decides which schema the rest of
+ * the walk uses, and a bare `spec.containers` document is a Pod.
+ */
+export const FALLBACK_KIND = 'Pod';
 
 /**
  * Definitions that are structurally objects in the spec but behave as scalars
@@ -39,15 +47,36 @@ const SCALAR_DEFINITIONS = new Set([
 /** Free-form objects whose contents the API does not describe. */
 const OPAQUE_DEFINITIONS = new Set(['io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1']);
 
+/**
+ * One version's bundle. It carries a root per supported kind over a shared
+ * definition pool, so switching kinds mid-document costs nothing — `for()`
+ * hands back a view rooted at the kind the document declares.
+ */
 export class Schema {
+  private readonly views = new Map<string, KindSchema>();
+
   constructor(private readonly bundle: SchemaBundle) {}
 
   get version(): string {
     return this.bundle.k8sVersion;
   }
 
-  get rootRef(): string {
-    return this.bundle.root;
+  /** Kinds this bundle has a root definition for. */
+  get kinds(): string[] {
+    return Object.keys(this.bundle.roots);
+  }
+
+  /** A view rooted at one kind, or undefined if the bundle does not carry it. */
+  for(kind: string): KindSchema | undefined {
+    const cached = this.views.get(kind);
+    if (cached) return cached;
+
+    const ref = this.bundle.roots[kind];
+    if (ref === undefined) return undefined;
+
+    const view = new KindSchema(this, kind, ref);
+    this.views.set(kind, view);
+    return view;
   }
 
   definition(name: string): SchemaNode | undefined {
@@ -62,12 +91,45 @@ export class Schema {
     const target = this.bundle.definitions[name];
     return { node: target, ref: name };
   }
+}
+
+/** A bundle bound to one root definition. This is what both lint layers see. */
+export class KindSchema {
+  constructor(
+    private readonly schema: Schema,
+    readonly kind: string,
+    readonly rootRef: string,
+  ) {}
+
+  get version(): string {
+    return this.schema.version;
+  }
+
+  definition(name: string): SchemaNode | undefined {
+    return this.schema.definition(name);
+  }
+
+  resolve(node: SchemaNode | undefined): { node: SchemaNode | undefined; ref?: string } {
+    return this.schema.resolve(node);
+  }
+
+  /** The group/version/kind the apiserver serves this root under. */
+  get groupVersionKind(): { group: string; version: string; kind: string } {
+    const gvk = this.definition(this.rootRef)?.['x-kubernetes-group-version-kind']?.[0];
+    return gvk ?? { group: '', version: 'v1', kind: this.kind };
+  }
+
+  /** The apiVersion a manifest of this kind must declare. */
+  get apiVersion(): string {
+    const { group, version } = this.groupVersionKind;
+    return group ? `${group}/${version}` : version;
+  }
 
   /** Describe a field for tooltips: type, requiredness and API description. */
   describe(path: Path): { title: string; type: string; required: boolean; description?: string } | undefined {
-    let current: SchemaNode | undefined = { $ref: `#/definitions/${this.bundle.root}` };
+    let current: SchemaNode | undefined = { $ref: `#/definitions/${this.rootRef}` };
     let required = false;
-    let title = 'Pod';
+    let title = this.kind;
 
     for (const segment of path) {
       const { node } = this.resolve(current);
@@ -128,7 +190,9 @@ export function docsUrlFrom(description: string | undefined): string | undefined
 
 export interface SchemaLintResult {
   findings: Finding[];
-  /** Set when the document is not a Pod, so the caller can skip Pod rules. */
+  /** The kind the document was checked as, so the caller can pick its rules. */
+  kind?: string;
+  /** Set when the document declares a kind no bundled root covers. */
   unsupportedKind?: string;
 }
 
@@ -146,25 +210,35 @@ export function lintSchema(value: unknown, schema: Schema): SchemaLintResult {
     return { findings };
   }
 
-  const gvk = schema.definition(schema.rootRef)?.['x-kubernetes-group-version-kind']?.[0];
-  const expectedApiVersion = gvk && gvk.group ? `${gvk.group}/${gvk.version}` : (gvk?.version ?? 'v1');
-  const expectedKind = gvk?.kind ?? 'Pod';
-
   const kind = value['kind'];
   const apiVersion = value['apiVersion'];
 
+  let kindSchema: KindSchema | undefined;
   if (kind == null) {
+    kindSchema = schema.for(FALLBACK_KIND);
     findings.push({
       ruleId: 'schema/missing-kind',
       severity: 'error',
       path: [],
       message: 'Required field "kind" is missing.',
-      explanation: 'Every Kubernetes object declares its type through "kind". For a Pod this is "Pod".',
-      fix: { title: 'Add kind: Pod', safe: false, ops: [{ op: 'set', path: ['kind'], value: expectedKind }] },
+      explanation: `Every Kubernetes object declares its type through "kind". This linter understands ${listKinds(schema.kinds)}; without one the document was checked as ${article(FALLBACK_KIND)} ${FALLBACK_KIND}.`,
+      fix: {
+        title: `Add kind: ${FALLBACK_KIND}`,
+        safe: false,
+        ops: [{ op: 'set', path: ['kind'], value: FALLBACK_KIND }],
+      },
     });
-  } else if (kind !== expectedKind) {
-    return { findings, unsupportedKind: String(kind) };
+  } else {
+    kindSchema = typeof kind === 'string' ? schema.for(kind) : undefined;
   }
+
+  if (!kindSchema) return { findings, unsupportedKind: String(kind) };
+
+  const expectedApiVersion = kindSchema.apiVersion;
+  const group = kindSchema.groupVersionKind.group;
+  const groupNote = group
+    ? `${kindSchema.kind} is served by the "${group}" API group, so its apiVersion carries that group prefix.`
+    : `${kindSchema.kind} is part of the core API group, which uses a bare version with no group prefix.`;
 
   if (apiVersion == null) {
     findings.push({
@@ -172,7 +246,7 @@ export function lintSchema(value: unknown, schema: Schema): SchemaLintResult {
       severity: 'error',
       path: [],
       message: 'Required field "apiVersion" is missing.',
-      explanation: `A Pod belongs to the core API group, so its apiVersion is "${expectedApiVersion}".`,
+      explanation: `${groupNote} For ${article(kindSchema.kind)} ${kindSchema.kind} it is "${expectedApiVersion}".`,
       fix: {
         title: `Add apiVersion: ${expectedApiVersion}`,
         safe: true,
@@ -184,8 +258,8 @@ export function lintSchema(value: unknown, schema: Schema): SchemaLintResult {
       ruleId: 'schema/wrong-api-version',
       severity: 'error',
       path: ['apiVersion'],
-      message: `Pod is served by apiVersion "${expectedApiVersion}", not "${String(apiVersion)}".`,
-      explanation: 'Pod has always been part of the core API group, which uses a bare version with no group prefix.',
+      message: `${kindSchema.kind} is served by apiVersion "${expectedApiVersion}", not "${String(apiVersion)}".`,
+      explanation: groupNote,
       fix: {
         title: `Change to ${expectedApiVersion}`,
         safe: true,
@@ -194,15 +268,21 @@ export function lintSchema(value: unknown, schema: Schema): SchemaLintResult {
     });
   }
 
-  walk(value, { $ref: `#/definitions/${schema.rootRef}` }, [], schema, findings);
-  return { findings };
+  walk(value, { $ref: `#/definitions/${kindSchema.rootRef}` }, [], kindSchema, findings);
+  return { findings, kind: kindSchema.kind };
+}
+
+/** "Pod and Deployment", "Pod, Deployment and Job". */
+function listKinds(kinds: string[]): string {
+  if (kinds.length <= 1) return kinds[0] ?? 'nothing';
+  return `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`;
 }
 
 function walk(
   value: unknown,
   property: SchemaNode,
   path: Path,
-  schema: Schema,
+  schema: KindSchema,
   findings: Finding[],
 ): void {
   const { node, ref } = schema.resolve(property);
@@ -513,7 +593,7 @@ export interface FieldVisit {
  */
 export function walkFields(
   value: unknown,
-  schema: Schema,
+  schema: KindSchema,
   visit: (field: FieldVisit) => void,
 ): void {
   const seen = new Set<unknown>();
@@ -537,7 +617,7 @@ export function walkFields(
     if (seen.has(current)) return;
     seen.add(current);
 
-    const owner = ref ? (ref.split('.').pop() ?? ref) : 'Pod';
+    const owner = ref ? (ref.split('.').pop() ?? ref) : schema.kind;
     for (const [key, child] of Object.entries(current)) {
       const childSchema = node.properties?.[key] ?? node.additionalProperties;
       if (!childSchema) continue;

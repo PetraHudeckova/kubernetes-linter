@@ -7,10 +7,7 @@ import {
   type Rule,
   type RuleContext,
 } from './context.js';
-
-const SET_OPERATORS = ['In', 'NotIn'];
-const UNARY_OPERATORS = ['Exists', 'DoesNotExist'];
-const NUMERIC_OPERATORS = ['Gt', 'Lt'];
+import { checkRequirement } from './selector.js';
 
 const AFFINITY_DOCS = 'https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/';
 const TAINT_DOCS = 'https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/';
@@ -38,7 +35,7 @@ function checkAffinity(ctx: RuleContext): void {
       ctx.report({
         ruleId: 'pod/empty-node-selector-terms',
         severity: 'error',
-        path: ['spec', 'affinity', 'nodeAffinity', 'requiredDuringSchedulingIgnoredDuringExecution'],
+        path: ctx.at('affinity', 'nodeAffinity', 'requiredDuringSchedulingIgnoredDuringExecution'),
         message: 'nodeSelectorTerms must not be empty.',
         explanation:
           'An empty list matches nothing, so the Pod could never be scheduled. Remove the required affinity instead.',
@@ -47,50 +44,46 @@ function checkAffinity(ctx: RuleContext): void {
     }
 
     terms?.forEach((term, termIndex) => {
-      const basePath = [
-        'spec',
+      const basePath = ctx.at(
         'affinity',
         'nodeAffinity',
         'requiredDuringSchedulingIgnoredDuringExecution',
         'nodeSelectorTerms',
         termIndex,
-      ];
+      );
       checkRequirements(ctx, asObject(term), basePath, true);
     });
 
     asArray(nodeAffinity['preferredDuringSchedulingIgnoredDuringExecution'])?.forEach((entry, index) => {
       const preference = asObject(entry);
       if (!preference) return;
-      const basePath = [
-        'spec',
+      const basePath = ctx.at(
         'affinity',
         'nodeAffinity',
         'preferredDuringSchedulingIgnoredDuringExecution',
         index,
-      ];
+      );
       checkWeight(ctx, preference['weight'], [...basePath, 'weight']);
       checkRequirements(ctx, asObject(preference['preference']), [...basePath, 'preference'], true);
     });
   }
 
-  for (const kind of ['podAffinity', 'podAntiAffinity'] as const) {
-    const podAffinity = asObject(affinity[kind]);
+  for (const affinityKind of ['podAffinity', 'podAntiAffinity'] as const) {
+    const podAffinity = asObject(affinity[affinityKind]);
     if (!podAffinity) continue;
 
     asArray(podAffinity['requiredDuringSchedulingIgnoredDuringExecution'])?.forEach((entry, index) => {
-      checkPodAffinityTerm(ctx, asObject(entry), [
-        'spec',
-        'affinity',
-        kind,
-        'requiredDuringSchedulingIgnoredDuringExecution',
-        index,
-      ]);
+      checkPodAffinityTerm(
+        ctx,
+        asObject(entry),
+        ctx.at('affinity', affinityKind, 'requiredDuringSchedulingIgnoredDuringExecution', index),
+      );
     });
 
     asArray(podAffinity['preferredDuringSchedulingIgnoredDuringExecution'])?.forEach((entry, index) => {
       const weighted = asObject(entry);
       if (!weighted) return;
-      const basePath = ['spec', 'affinity', kind, 'preferredDuringSchedulingIgnoredDuringExecution', index];
+      const basePath = ctx.at('affinity', affinityKind, 'preferredDuringSchedulingIgnoredDuringExecution', index);
       checkWeight(ctx, weighted['weight'], [...basePath, 'weight']);
       checkPodAffinityTerm(ctx, asObject(weighted['podAffinityTerm']), [...basePath, 'podAffinityTerm']);
     });
@@ -125,7 +118,11 @@ function checkPodAffinityTerm(
     const selector = asObject(term[field]);
     if (!selector) continue;
     asArray(selector['matchExpressions'])?.forEach((entry, index) => {
-      checkRequirement(ctx, asObject(entry), [...basePath, field, 'matchExpressions', index], false);
+      checkRequirement(ctx, asObject(entry), [...basePath, field, 'matchExpressions', index], {
+        allowNumeric: false,
+        idPrefix: 'pod',
+        docsUrl: AFFINITY_DOCS,
+      });
     });
   }
 }
@@ -139,67 +136,12 @@ function checkRequirements(
   if (!term) return;
   for (const field of ['matchExpressions', 'matchFields'] as const) {
     asArray(term[field])?.forEach((entry, index) => {
-      checkRequirement(ctx, asObject(entry), [...basePath, field, index], allowNumeric);
-    });
-  }
-}
-
-function checkRequirement(
-  ctx: RuleContext,
-  requirement: Record<string, unknown> | undefined,
-  path: (string | number)[],
-  allowNumeric: boolean,
-): void {
-  if (!requirement) return;
-  const operator = asString(requirement['operator']);
-  if (operator === undefined) return;
-
-  const values = asArray(requirement['values']);
-  const count = values?.length ?? 0;
-
-  if (SET_OPERATORS.includes(operator) && count === 0) {
-    ctx.report({
-      ruleId: 'pod/selector-values-required',
-      severity: 'error',
-      path,
-      message: `Operator "${operator}" requires at least one value.`,
-      explanation: `"${operator}" compares the label against a set, so the set cannot be empty.`,
-      docsUrl: AFFINITY_DOCS,
-    });
-  }
-
-  if (UNARY_OPERATORS.includes(operator) && count > 0) {
-    ctx.report({
-      ruleId: 'pod/selector-values-forbidden',
-      severity: 'error',
-      path: [...path, 'values'],
-      message: `Operator "${operator}" must not have values.`,
-      explanation: `"${operator}" only tests whether the label is present, so any values are rejected.`,
-      docsUrl: AFFINITY_DOCS,
-      fix: { title: 'Remove values', safe: true, ops: [{ op: 'delete', path: [...path, 'values'] }] },
-    });
-  }
-
-  if (allowNumeric && NUMERIC_OPERATORS.includes(operator)) {
-    if (count !== 1) {
-      ctx.report({
-        ruleId: 'pod/selector-values-single',
-        severity: 'error',
-        path,
-        message: `Operator "${operator}" requires exactly one value, but ${count} were given.`,
-        explanation: `"${operator}" performs a numeric comparison against a single value.`,
+      checkRequirement(ctx, asObject(entry), [...basePath, field, index], {
+        allowNumeric,
+        idPrefix: 'pod',
         docsUrl: AFFINITY_DOCS,
       });
-    } else if (!/^-?\d+$/.test(String(values?.[0]))) {
-      ctx.report({
-        ruleId: 'pod/selector-value-not-integer',
-        severity: 'error',
-        path: [...path, 'values', 0],
-        message: `Operator "${operator}" requires an integer value, but got "${String(values?.[0])}".`,
-        explanation: 'Numeric comparisons parse the label value as a base-10 integer.',
-        docsUrl: AFFINITY_DOCS,
-      });
-    }
+    });
   }
 }
 
@@ -222,7 +164,7 @@ function checkTolerations(ctx: RuleContext): void {
   asArray(ctx.spec['tolerations'])?.forEach((entry, index) => {
     const toleration = asObject(entry);
     if (!toleration) return;
-    const path = ['spec', 'tolerations', index];
+    const path = ctx.at('tolerations', index);
 
     const operator = asString(toleration['operator']) ?? 'Equal';
     const key = asString(toleration['key']);
@@ -295,7 +237,7 @@ function checkTopologySpread(ctx: RuleContext): void {
   asArray(ctx.spec['topologySpreadConstraints'])?.forEach((entry, index) => {
     const constraint = asObject(entry);
     if (!constraint) return;
-    const path = ['spec', 'topologySpreadConstraints', index];
+    const path = ctx.at('topologySpreadConstraints', index);
 
     const maxSkew = asNumber(constraint['maxSkew']);
     if (maxSkew !== undefined && maxSkew < 1) {

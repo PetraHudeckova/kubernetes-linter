@@ -11,8 +11,8 @@ export const securityContextRule: Rule = {
   id: 'pod/security-context',
   run(ctx: RuleContext) {
     const podContext = asObject(ctx.spec['securityContext']);
-    checkProfiles(ctx, podContext, ['spec', 'securityContext']);
-    checkRunAs(ctx, podContext, ['spec', 'securityContext'], 'the Pod');
+    checkProfiles(ctx, podContext, ctx.at('securityContext'));
+    checkRunAs(ctx, podContext, ctx.at('securityContext'), 'the Pod');
 
     asArray(podContext?.['sysctls'])?.forEach((entry, index) => {
       const sysctl = asObject(entry);
@@ -20,7 +20,7 @@ export const securityContextRule: Rule = {
         ctx.report({
           ruleId: 'pod/sysctl-without-name',
           severity: 'error',
-          path: ['spec', 'securityContext', 'sysctls', index],
+          path: ctx.at('securityContext', 'sysctls', index),
           message: 'Each sysctl must have a name.',
           explanation: 'For example: { name: net.core.somaxconn, value: "1024" }.',
           docsUrl: 'https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/',

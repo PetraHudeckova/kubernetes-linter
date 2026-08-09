@@ -19,7 +19,7 @@ export const volumesRule: Rule = {
     volumes.forEach((entry, index) => {
       const volume = asObject(entry);
       if (!volume) return;
-      const path = ['spec', 'volumes', index];
+      const path = ctx.at('volumes', index);
       const name = asString(volume['name']);
 
       if (name !== undefined) {
@@ -188,18 +188,18 @@ function checkVolumeReference(
     path: [...path, 'name'],
     message: suggestion
       ? `${field} references volume "${name}", which is not declared. Did you mean "${suggestion}"?`
-      : `${field} references volume "${name}", which is not declared in spec.volumes.`,
+      : `${field} references volume "${name}", which is not declared in ${ctx.field('volumes')}.`,
     explanation:
       known.length > 0
         ? `The Pod declares: ${known.map((entry) => `"${entry}"`).join(', ')}. A mount can only reference a volume defined on the same Pod.`
-        : 'The Pod declares no volumes at all. Add the volume under spec.volumes before mounting it.',
+        : `The Pod declares no volumes at all. Add the volume under ${ctx.field('volumes')} before mounting it.`,
     docsUrl: 'https://kubernetes.io/docs/concepts/storage/volumes/',
     fix: suggestion
       ? { title: `Change to "${suggestion}"`, safe: true, ops: [{ op: 'set', path: [...path, 'name'], value: suggestion }] }
       : {
           title: `Declare volume "${name}" as an emptyDir`,
           safe: false,
-          ops: [{ op: 'insert', path: ['spec', 'volumes'], index: Number.MAX_SAFE_INTEGER, value: { name, emptyDir: {} } }],
+          ops: [{ op: 'insert', path: ctx.at('volumes'), index: Number.MAX_SAFE_INTEGER, value: { name, emptyDir: {} } }],
         },
   });
 }

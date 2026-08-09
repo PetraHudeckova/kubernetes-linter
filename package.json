@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Client-side linter for Kubernetes Pod manifests",
+  "description": "Client-side linter for Kubernetes Pod and Deployment manifests",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -11,10 +11,9 @@ export const containersRule: Rule = {
       ctx.report({
         ruleId: 'pod/no-containers',
         severity: 'error',
-        path: ['spec', 'containers'],
+        path: ctx.at('containers'),
         message: 'A Pod must define at least one container.',
-        explanation:
-          'spec.containers is present but empty. Init containers and ephemeral containers do not count — a Pod needs at least one regular container.',
+        explanation: `${ctx.field('containers')} is present but empty. Init containers and ephemeral containers do not count — a Pod needs at least one regular container.`,
       });
     }
 

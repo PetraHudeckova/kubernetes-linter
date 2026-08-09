@@ -7,7 +7,7 @@ import {
   DEFAULT_VERSION,
 } from '../src/lint/index.js';
 import { EXAMPLES } from '../src/ui/examples.js';
-import { pod, podWithContainer } from './helpers.js';
+import { VALID_DEPLOYMENT, deploymentWithPodSpec, pod, podWithContainer } from './helpers.js';
 
 const schemaFor = (version: string) => loadSchema(version);
 
@@ -47,6 +47,33 @@ describe('bundled versions', () => {
       const { findings } = lint(valid.yaml, await schemaFor(version));
       expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
     }
+  });
+
+  it('carries a root for every kind on every version', async () => {
+    for (const version of AVAILABLE_VERSIONS) {
+      const schema = await schemaFor(version);
+      expect(schema.kinds, version).toEqual(['Pod', 'Deployment']);
+      expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
+      expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
+    }
+  });
+
+  it('lints a valid Deployment cleanly on every version', async () => {
+    // The Deployment closure is generated alongside the Pod one, so the same
+    // regeneration tripwire has to cover the second root.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_DEPLOYMENT, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('applies version-gated pod spec rules under a Deployment template', async () => {
+    // hostnameOverride arrived in 1.34. The gate resolves the field through
+    // the kind's own spec path, so it must still close on an older target
+    // rather than silently passing everything.
+    const yaml = deploymentWithPodSpec('      hostnameOverride: Not_A_Name\n');
+    expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
+    expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
   });
 });
 

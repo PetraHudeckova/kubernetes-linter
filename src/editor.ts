@@ -6,7 +6,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { indentWithTab } from '@codemirror/commands';
-import type { Schema } from './lint/schema.js';
+import { FALLBACK_KIND, type Schema } from './lint/schema.js';
 import { pathAtOffset } from './lint/parse.js';
 import type { LocatedFinding } from './lint/types.js';
 import { applyFix } from './lint/fix.js';
@@ -126,13 +126,15 @@ function toDiagnostic(view: EditorView, finding: LocatedFinding): Diagnostic {
  * Hovering a key explains it using the field's own description from the
  * Kubernetes OpenAPI spec, which ships with the schema bundle. The schema is
  * read per hover rather than captured, so switching version updates the text.
+ * The path is resolved against the kind its own document declares, so a
+ * manifest holding both a Pod and a Deployment explains each correctly.
  */
 const createFieldTooltip = (getSchema: () => Schema) =>
   hoverTooltip((view, pos) => {
     const located = pathAtOffset(view.state.doc.toString(), pos);
     if (!located) return null;
 
-    const described = getSchema().describe(located.path);
+    const described = getSchema().for(located.kind ?? FALLBACK_KIND)?.describe(located.path);
     if (!described) return null;
 
     return {

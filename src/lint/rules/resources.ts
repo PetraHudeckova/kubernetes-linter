@@ -19,7 +19,7 @@ export const resourcesRule: Rule = {
     }
 
     // Pod-level resources sit alongside the per-container ones.
-    checkResourceBlock(ctx, asObject(ctx.spec['resources']), ['spec', 'resources'], 'the Pod');
+    checkResourceBlock(ctx, asObject(ctx.spec['resources']), ctx.at('resources'), 'the Pod');
 
     for (const ref of ctx.containers) {
       const resources = asObject(ref.container['resources']);
@@ -39,11 +39,11 @@ export const resourcesRule: Rule = {
           path,
           message: suggestion
             ? `Resource claim "${name}" is not declared. Did you mean "${suggestion}"?`
-            : `Resource claim "${name}" is not declared in spec.resourceClaims.`,
+            : `Resource claim "${name}" is not declared in ${ctx.field('resourceClaims')}.`,
           explanation:
             claimNames.size > 0
               ? `The Pod declares: ${[...claimNames].map((entry) => `"${entry}"`).join(', ')}.`
-              : 'A container may only consume claims that the Pod declares under spec.resourceClaims.',
+              : `A container may only consume claims that the Pod declares under ${ctx.field('resourceClaims')}.`,
           docsUrl: 'https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/',
           fix: suggestion
             ? { title: `Change to "${suggestion}"`, safe: true, ops: [{ op: 'set', path, value: suggestion }] }

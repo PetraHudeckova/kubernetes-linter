@@ -1,9 +1,213 @@
 {
- "k8sVersion": "1.36",
- "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/release-1.36/api/openapi-spec/swagger.json",
+ "k8sVersion": "1.34",
+ "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/release-1.34/api/openapi-spec/swagger.json",
  "generatedAt": "2026-08-09",
- "root": "io.k8s.api.core.v1.Pod",
+ "roots": {
+  "Pod": "io.k8s.api.core.v1.Pod",
+  "Deployment": "io.k8s.api.apps.v1.Deployment"
+ },
  "definitions": {
+  "io.k8s.api.apps.v1.Deployment": {
+   "description": "Deployment enables declarative updates for Pods and ReplicaSets.",
+   "properties": {
+    "apiVersion": {
+     "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentSpec",
+     "description": "Specification of the desired behavior of the Deployment."
+    },
+    "status": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentStatus",
+     "description": "Most recently observed status of the Deployment."
+    }
+   },
+   "type": "object",
+   "x-kubernetes-group-version-kind": [
+    {
+     "group": "apps",
+     "kind": "Deployment",
+     "version": "v1"
+    }
+   ]
+  },
+  "io.k8s.api.apps.v1.DeploymentCondition": {
+   "description": "DeploymentCondition describes the state of a deployment at a certain point.",
+   "properties": {
+    "lastTransitionTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "Last time the condition transitioned from one status to another."
+    },
+    "lastUpdateTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "The last time this condition was updated."
+    },
+    "message": {
+     "description": "A human readable message indicating details about the transition.",
+     "type": "string"
+    },
+    "reason": {
+     "description": "The reason for the condition's last transition.",
+     "type": "string"
+    },
+    "status": {
+     "description": "Status of the condition, one of True, False, Unknown.",
+     "type": "string"
+    },
+    "type": {
+     "description": "Type of deployment condition.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "status"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DeploymentSpec": {
+   "description": "DeploymentSpec is the specification of the desired behavior of the Deployment.",
+   "properties": {
+    "minReadySeconds": {
+     "description": "Minimum number of seconds for which a newly created pod should be ready without any of its container crashing, for it to be considered available. Defaults to 0 (pod will be considered available as soon as it is ready)",
+     "format": "int32",
+     "type": "integer"
+    },
+    "paused": {
+     "description": "Indicates that the deployment is paused.",
+     "type": "boolean"
+    },
+    "progressDeadlineSeconds": {
+     "description": "The maximum time in seconds for a deployment to make progress before it is considered to be failed. The deployment controller will continue to process failed deployments and a condition with a ProgressDeadlineExceeded reason will be surfaced in the deployment status. Note that progress will not be estimated during the time a deployment is paused. Defaults to 600s.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "replicas": {
+     "description": "Number of desired pods. This is a pointer to distinguish between explicit zero and not specified. Defaults to 1.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "revisionHistoryLimit": {
+     "description": "The number of old ReplicaSets to retain to allow rollback. This is a pointer to distinguish between explicit zero and not specified. Defaults to 10.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "selector": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
+     "description": "Label selector for pods. Existing ReplicaSets whose pods are selected by this will be the ones affected by this deployment. It must match the pod template's labels."
+    },
+    "strategy": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentStrategy",
+     "description": "The deployment strategy to use to replace existing pods with new ones.",
+     "x-kubernetes-patch-strategy": "retainKeys"
+    },
+    "template": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PodTemplateSpec",
+     "description": "Template describes the pods that will be created. The only allowed template.spec.restartPolicy value is \"Always\"."
+    }
+   },
+   "required": [
+    "selector",
+    "template"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DeploymentStatus": {
+   "description": "DeploymentStatus is the most recently observed status of the Deployment.",
+   "properties": {
+    "availableReplicas": {
+     "description": "Total number of available non-terminating pods (ready for at least minReadySeconds) targeted by this deployment.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "collisionCount": {
+     "description": "Count of hash collisions for the Deployment. The Deployment controller uses this field as a collision avoidance mechanism when it needs to create the name for the newest ReplicaSet.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "conditions": {
+     "description": "Represents the latest available observations of a deployment's current state.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentCondition"
+     },
+     "type": "array",
+     "x-kubernetes-list-map-keys": [
+      "type"
+     ],
+     "x-kubernetes-list-type": "map",
+     "x-kubernetes-patch-merge-key": "type",
+     "x-kubernetes-patch-strategy": "merge"
+    },
+    "observedGeneration": {
+     "description": "The generation observed by the deployment controller.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "readyReplicas": {
+     "description": "Total number of non-terminating pods targeted by this Deployment with a Ready Condition.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "replicas": {
+     "description": "Total number of non-terminating pods targeted by this deployment (their labels match the selector).",
+     "format": "int32",
+     "type": "integer"
+    },
+    "terminatingReplicas": {
+     "description": "Total number of terminating pods targeted by this deployment. Terminating pods have a non-null .metadata.deletionTimestamp and have not yet reached the Failed or Succeeded .status.phase.\n\nThis is an alpha field. Enable DeploymentReplicaSetTerminatingReplicas to be able to use this field.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "unavailableReplicas": {
+     "description": "Total number of unavailable pods targeted by this deployment. This is the total number of pods that are still required for the deployment to have 100% available capacity. They may either be pods that are running but not yet available or pods that still have not been created.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "updatedReplicas": {
+     "description": "Total number of non-terminating pods targeted by this deployment that have the desired template spec.",
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DeploymentStrategy": {
+   "description": "DeploymentStrategy describes how to replace existing pods with new ones.",
+   "properties": {
+    "rollingUpdate": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.RollingUpdateDeployment",
+     "description": "Rolling update config params. Present only if DeploymentStrategyType = RollingUpdate."
+    },
+    "type": {
+     "description": "Type of deployment. Can be \"Recreate\" or \"RollingUpdate\". Default is RollingUpdate.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.RollingUpdateDeployment": {
+   "description": "Spec to control the desired behavior of rolling update.",
+   "properties": {
+    "maxSurge": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of pods that can be scheduled above the desired number of pods. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). This can not be 0 if MaxUnavailable is 0. Absolute number is calculated from percentage by rounding up. Defaults to 25%. Example: when this is set to 30%, the new ReplicaSet can be scaled up immediately when the rolling update starts, such that the total number of old and new pods do not exceed 130% of desired pods. Once old pods have been killed, new ReplicaSet can be scaled up further, ensuring that total number of pods running at any time during the update is at most 130% of desired pods."
+    },
+    "maxUnavailable": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of pods that can be unavailable during the update. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). Absolute number is calculated from percentage by rounding down. This can not be 0 if MaxSurge is 0. Defaults to 25%. Example: when this is set to 30%, the old ReplicaSet can be scaled down to 70% of desired pods immediately when the rolling update starts. Once new pods are ready, old ReplicaSet can be scaled down further, followed by scaling up the new ReplicaSet, ensuring that the total number of pods available at all times during the update is at least 70% of desired pods."
+    }
+   },
+   "type": "object"
+  },
   "io.k8s.api.core.v1.AWSElasticBlockStoreVolumeSource": {
    "description": "Represents a Persistent Disk resource in AWS.\n\nAn AWS EBS disk must exist before mounting to a container. The disk must also be in the same AWS zone as the kubelet. An AWS EBS disk can only be mounted as read/write once. AWS EBS volumes support ownership management and SELinux relabeling.",
    "properties": {
@@ -438,7 +642,7 @@
      "description": "Periodic probe of container service readiness. Container will be removed from service endpoints if the probe fails. Cannot be updated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes"
     },
     "resizePolicy": {
-     "description": "Resources resize policy for the container. This field cannot be set on ephemeral containers.",
+     "description": "Resources resize policy for the container.",
      "items": {
       "$ref": "#/definitions/io.k8s.api.core.v1.ContainerResizePolicy"
      },
@@ -1526,19 +1730,6 @@
    },
    "type": "object"
   },
-  "io.k8s.api.core.v1.ImageVolumeStatus": {
-   "description": "ImageVolumeStatus represents the image-based volume status.",
-   "properties": {
-    "imageRef": {
-     "description": "ImageRef is the digest of the image used for this volume. It should have a value that's similar to the pod's status.containerStatuses[i].imageID. The ImageRef length should not exceed 256 characters.",
-     "type": "string"
-    }
-   },
-   "required": [
-    "imageRef"
-   ],
-   "type": "object"
-  },
   "io.k8s.api.core.v1.KeyToPath": {
    "description": "Maps a string key to a path within a volume.",
    "properties": {
@@ -1682,35 +1873,6 @@
    },
    "type": "object"
   },
-  "io.k8s.api.core.v1.NodeAllocatableResourceClaimStatus": {
-   "description": "NodeAllocatableResourceClaimStatus describes the status of node allocatable resources allocated via DRA.",
-   "properties": {
-    "containers": {
-     "description": "Containers lists the names of all containers in this pod that reference the claim.",
-     "items": {
-      "type": "string"
-     },
-     "type": "array",
-     "x-kubernetes-list-type": "set"
-    },
-    "resourceClaimName": {
-     "description": "ResourceClaimName is the resource claim referenced by the pod that resulted in this node allocatable resource allocation.",
-     "type": "string"
-    },
-    "resources": {
-     "additionalProperties": {
-      "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
-     },
-     "description": "Resources is a map of the node-allocatable resource name to the aggregate quantity allocated to the claim.",
-     "type": "object"
-    }
-   },
-   "required": [
-    "resourceClaimName",
-    "resources"
-   ],
-   "type": "object"
-  },
   "io.k8s.api.core.v1.NodeSelector": {
    "description": "A node selector represents the union of the results of one or more label queries over a set of nodes; that is, it represents the OR of the selectors represented by the node selector terms.",
    "properties": {
@@ -1817,7 +1979,7 @@
     },
     "resources": {
      "$ref": "#/definitions/io.k8s.api.core.v1.VolumeResourceRequirements",
-     "description": "resources represents the minimum resources the volume should have. Users are allowed to specify resource requirements that are lower than previous value but must still be higher than capacity recorded in the status field of the claim. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources"
+     "description": "resources represents the minimum resources the volume should have. If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements that are lower than previous value but must still be higher than capacity recorded in the status field of the claim. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources"
     },
     "selector": {
      "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
@@ -2042,13 +2204,6 @@
     "signerName": {
      "description": "Kubelet's generated CSRs will be addressed to this signer.",
      "type": "string"
-    },
-    "userAnnotations": {
-     "additionalProperties": {
-      "type": "string"
-     },
-     "description": "userAnnotations allow pod authors to pass additional information to the signer implementation.  Kubernetes does not restrict or validate this metadata in any way.\n\nThese values are copied verbatim into the `spec.unverifiedUserAnnotations` field of the PodCertificateRequest objects that Kubelet creates.\n\nEntries are subject to the same validation as object metadata annotations, with the addition that all keys must be domain-prefixed. No restrictions are placed on values, except an overall size limitation on the entire field.\n\nSigners should document the keys and values they support. Signers should deny requests that contain keys they do not recognize.",
-     "type": "object"
     }
    },
    "required": [
@@ -2073,7 +2228,7 @@
      "type": "string"
     },
     "observedGeneration": {
-     "description": "If set, this represents the .metadata.generation that the pod condition was set based upon.",
+     "description": "If set, this represents the .metadata.generation that the pod condition was set based upon. This is an alpha field. Enable PodObservedGenerationTracking to be able to use this field.",
      "format": "int64",
      "type": "integer"
     },
@@ -2202,7 +2357,7 @@
    "type": "object"
   },
   "io.k8s.api.core.v1.PodResourceClaim": {
-   "description": "PodResourceClaim references exactly one ResourceClaim, either directly or by naming a ResourceClaimTemplate which is then turned into a ResourceClaim for the pod.\n\nIt adds a name to it that uniquely identifies the ResourceClaim inside the Pod. Containers that need access to the ResourceClaim reference it with this name.\n\nWhen the DRAWorkloadResourceClaims feature gate is enabled and this Pod belongs to a PodGroup, a PodResourceClaim is matched to a PodGroupResourceClaim if all of their fields are equal (Name, ResourceClaimName, and ResourceClaimTemplateName). A matched claim references a single ResourceClaim shared across all Pods in the PodGroup, reserved for the PodGroup in ResourceClaimStatus.ReservedFor rather than for individual Pods.",
+   "description": "PodResourceClaim references exactly one ResourceClaim, either directly or by naming a ResourceClaimTemplate which is then turned into a ResourceClaim for the pod.\n\nIt adds a name to it that uniquely identifies the ResourceClaim inside the Pod. Containers that need access to the ResourceClaim reference it with this name.",
    "properties": {
     "name": {
      "description": "Name uniquely identifies this resource claim inside the pod. This must be a DNS_LABEL.",
@@ -2213,7 +2368,7 @@
      "type": "string"
     },
     "resourceClaimTemplateName": {
-     "description": "ResourceClaimTemplateName is the name of a ResourceClaimTemplate object in the same namespace as this pod.\n\nThe template will be used to create a new ResourceClaim, which will be bound to this pod. When this pod is deleted, the ResourceClaim will also be deleted. The pod name and resource name, along with a generated component, will be used to form a unique name for the ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.\n\nWhen the DRAWorkloadResourceClaims feature gate is enabled and the pod belongs to a PodGroup that defines a PodGroupResourceClaim with the same Name and ResourceClaimTemplateName, this PodResourceClaim resolves to the ResourceClaim generated for the PodGroup. All pods in the group that define an equivalent PodResourceClaim matching the PodGroupResourceClaim's Name and ResourceClaimTemplateName share the same generated ResourceClaim. ResourceClaims generated for a PodGroup are owned by the PodGroup and their lifecycles are tied to the PodGroup instead of any individual pod.\n\nThis field is immutable and no changes will be made to the corresponding ResourceClaim by the control plane after creating the ResourceClaim.\n\nExactly one of ResourceClaimName and ResourceClaimTemplateName must be set.",
+     "description": "ResourceClaimTemplateName is the name of a ResourceClaimTemplate object in the same namespace as this pod.\n\nThe template will be used to create a new ResourceClaim, which will be bound to this pod. When this pod is deleted, the ResourceClaim will also be deleted. The pod name and resource name, along with a generated component, will be used to form a unique name for the ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.\n\nThis field is immutable and no changes will be made to the corresponding ResourceClaim by the control plane after creating the ResourceClaim.\n\nExactly one of ResourceClaimName and ResourceClaimTemplateName must be set.",
      "type": "string"
     }
    },
@@ -2230,7 +2385,7 @@
      "type": "string"
     },
     "resourceClaimName": {
-     "description": "ResourceClaimName is the name of the ResourceClaim that was generated for the Pod in the namespace of the Pod.\n\nWhen the DRAWorkloadResourceClaims feature is enabled and the corresponding PodResourceClaim matches a PodGroupResourceClaim made by the Pod's PodGroup, then this is the name of the ResourceClaim generated and reserved for the PodGroup.\n\nIf this is unset, then generating a ResourceClaim was not necessary. The pod.spec.resourceClaims entry can be ignored in this case.",
+     "description": "ResourceClaimName is the name of the ResourceClaim that was generated for the Pod in the namespace of the Pod. If this is unset, then generating a ResourceClaim was not necessary. The pod.spec.resourceClaims entry can be ignored in this case.",
      "type": "string"
     }
    },
@@ -2251,23 +2406,6 @@
     "name"
    ],
    "type": "object"
-  },
-  "io.k8s.api.core.v1.PodSchedulingGroup": {
-   "description": "PodSchedulingGroup identifies the runtime scheduling group instance that a Pod belongs to. The scheduler uses this information to apply workload-aware scheduling semantics. Exactly one field must be specified.",
-   "properties": {
-    "podGroupName": {
-     "description": "PodGroupName specifies the name of the standalone PodGroup object that represents the runtime instance of this group. Must be a DNS subdomain.",
-     "type": "string"
-    }
-   },
-   "type": "object",
-   "x-kubernetes-unions": [
-    {
-     "fields-to-discriminateBy": {
-      "podGroupName": "PodGroupName"
-     }
-    }
-   ]
   },
   "io.k8s.api.core.v1.PodSecurityContext": {
    "description": "PodSecurityContext holds pod-level security attributes and common container settings. Some fields are also present in container.securityContext.  Field values of container.securityContext take precedence over field values of PodSecurityContext.",
@@ -2419,7 +2557,7 @@
      "type": "boolean"
     },
     "hostUsers": {
-     "description": "Use the host's user namespace. Optional: Default to true. If set to true or not present, the pod will be run in the host user namespace, useful for when the pod needs a feature only available to the host user namespace, such as loading a kernel module with CAP_SYS_MODULE. When set to false, a new userns is created for the pod. Setting false is useful for mitigating container breakout vulnerabilities even allowing users to run their containers as root without actually having root privileges on the host.",
+     "description": "Use the host's user namespace. Optional: Default to true. If set to true or not present, the pod will be run in the host user namespace, useful for when the pod needs a feature only available to the host user namespace, such as loading a kernel module with CAP_SYS_MODULE. When set to false, a new userns is created for the pod. Setting false is useful for mitigating container breakout vulnerabilities even allowing users to run their containers as root without actually having root privileges on the host. This field is alpha-level and is only honored by servers that enable the UserNamespacesSupport feature.",
      "type": "boolean"
     },
     "hostname": {
@@ -2501,7 +2639,7 @@
      "x-kubernetes-list-type": "atomic"
     },
     "resourceClaims": {
-     "description": "ResourceClaims defines which ResourceClaims must be allocated and reserved before the Pod is allowed to start. The resources will be made available to those containers which consume them by name.\n\nThis is a stable field but requires that the DynamicResourceAllocation feature gate is enabled.\n\nThis field is immutable.",
+     "description": "ResourceClaims defines which ResourceClaims must be allocated and reserved before the Pod is allowed to start. The resources will be made available to those containers which consume them by name.\n\nThis is an alpha field and requires enabling the DynamicResourceAllocation feature gate.\n\nThis field is immutable.",
      "items": {
       "$ref": "#/definitions/io.k8s.api.core.v1.PodResourceClaim"
      },
@@ -2541,10 +2679,6 @@
      "x-kubernetes-list-type": "map",
      "x-kubernetes-patch-merge-key": "name",
      "x-kubernetes-patch-strategy": "merge"
-    },
-    "schedulingGroup": {
-     "$ref": "#/definitions/io.k8s.api.core.v1.PodSchedulingGroup",
-     "description": "SchedulingGroup provides a reference to the immediate scheduling runtime grouping object that this Pod belongs to. This field is used by the scheduler to identify the group and apply the correct group scheduling policies. The association with a group also impacts other lifecycle aspects of a Pod that are relevant in a wider context of scheduling like preemption, resource attachment, etc. If not specified, the Pod is treated as a single unit in all of these aspects. The group object referenced by this field may not exist at the time the Pod is created. This field is immutable, but a group object with the same name may be recreated with different policies. Doing this during pod scheduling may result in the placement not conforming to the expected policies."
     },
     "securityContext": {
      "$ref": "#/definitions/io.k8s.api.core.v1.PodSecurityContext",
@@ -2619,13 +2753,6 @@
   "io.k8s.api.core.v1.PodStatus": {
    "description": "PodStatus represents information about the status of a pod. Status may trail the actual state of a system, especially if the node that hosts the pod cannot contact the control plane.",
    "properties": {
-    "allocatedResources": {
-     "additionalProperties": {
-      "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
-     },
-     "description": "AllocatedResources is the total requests allocated for this pod by the node. If pod-level requests are not set, this will be the total requests aggregated across containers in the pod.",
-     "type": "object"
-    },
     "conditions": {
      "description": "Current service state of pod. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-conditions",
      "items": {
@@ -2685,20 +2812,12 @@
      "description": "A human readable message indicating details about why the pod is in this condition.",
      "type": "string"
     },
-    "nodeAllocatableResourceClaimStatuses": {
-     "description": "NodeAllocatableResourceClaimStatuses contains the status of node-allocatable resources that were allocated for this pod through DRA claims. This includes resources currently reported in v1.Node `status.allocatable` that are not extended resources (see https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#extended-resources). Examples include \"cpu\", \"memory\", \"ephemeral-storage\", and hugepages.",
-     "items": {
-      "$ref": "#/definitions/io.k8s.api.core.v1.NodeAllocatableResourceClaimStatus"
-     },
-     "type": "array",
-     "x-kubernetes-list-type": "atomic"
-    },
     "nominatedNodeName": {
      "description": "nominatedNodeName is set only when this pod preempts other pods on the node, but it cannot be scheduled right away as preemption victims receive their graceful termination periods. This field does not guarantee that the pod will be scheduled on this node. Scheduler may decide to place the pod elsewhere if other nodes become available sooner. Scheduler may also decide to give the resources on this node to a higher priority pod that is created after preemption. As a result, this field may be different than PodSpec.nodeName when the pod is scheduled.",
      "type": "string"
     },
     "observedGeneration": {
-     "description": "If set, this represents the .metadata.generation that the pod status was set based upon. The PodObservedGenerationTracking feature gate must be enabled to use this field.",
+     "description": "If set, this represents the .metadata.generation that the pod status was set based upon. This is an alpha field. Enable PodObservedGenerationTracking to be able to use this field.",
      "format": "int64",
      "type": "integer"
     },
@@ -2748,13 +2867,23 @@
      "x-kubernetes-patch-merge-key": "name",
      "x-kubernetes-patch-strategy": "merge,retainKeys"
     },
-    "resources": {
-     "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements",
-     "description": "Resources represents the compute resource requests and limits that have been applied at the pod level if pod-level requests or limits are set in PodSpec.Resources"
-    },
     "startTime": {
      "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
      "description": "RFC 3339 date and time at which the object was acknowledged by the Kubelet. This is before the Kubelet pulled the container image(s) for the pod."
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.core.v1.PodTemplateSpec": {
+   "description": "PodTemplateSpec describes the data a pod should have when created from a template",
+   "properties": {
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PodSpec",
+     "description": "Specification of the desired behavior of the pod. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
     }
    },
    "type": "object"
@@ -2994,10 +3123,6 @@
    "properties": {
     "health": {
      "description": "Health of the resource. can be one of:\n - Healthy: operates as normal\n - Unhealthy: reported unhealthy. We consider this a temporary health issue\n              since we do not have a mechanism today to distinguish\n              temporary and permanent issues.\n - Unknown: The status cannot be determined.\n            For example, Device Plugin got unregistered and hasn't been re-registered since.\n\nIn future we may want to introduce the PermanentlyUnhealthy Status.",
-     "type": "string"
-    },
-    "message": {
-     "description": "Message provides human-readable context for Health (e.g. \"ECC error count exceeded threshold\"). This field is populated by the kubelet when ResourceHealthStatusMessage is enabled if the DRA plugin returns a message, and is null otherwise.",
      "type": "string"
     },
     "resourceID": {
@@ -3268,7 +3393,7 @@
      "type": "boolean"
     },
     "procMount": {
-     "description": "procMount denotes the type of proc mount to use for the containers. The default value is Default which uses the container runtime defaults for readonly paths and masked paths. Note that this field cannot be set when spec.os.name is windows.",
+     "description": "procMount denotes the type of proc mount to use for the containers. The default value is Default which uses the container runtime defaults for readonly paths and masked paths. This requires the ProcMountType feature flag to be enabled. Note that this field cannot be set when spec.os.name is windows.",
      "type": "string"
     },
     "readOnlyRootFilesystem": {
@@ -3413,7 +3538,7 @@
      "type": "string"
     },
     "operator": {
-     "description": "Operator represents a key's relationship to the value. Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category. Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).",
+     "description": "Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.",
      "type": "string"
     },
     "tolerationSeconds": {
@@ -3599,7 +3724,7 @@
     },
     "image": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ImageVolumeSource",
-     "description": "image represents an OCI object (a container image or artifact) pulled and mounted on the kubelet's host machine. The volume is resolved at pod startup depending on which PullPolicy value is provided:\n\n- Always: the kubelet always attempts to pull the reference. Container creation will fail If the pull fails. - Never: the kubelet never pulls the reference and only uses a local image or artifact. Container creation will fail if the reference isn't present. - IfNotPresent: the kubelet pulls if the reference isn't already present on disk. Container creation will fail if the reference isn't present and the pull fails.\n\nThe volume gets re-resolved if the pod gets deleted and recreated, which means that new remote content will become available on pod recreation. A failure to resolve or pull the image during pod startup will block containers from starting and may add significant latency. Failures will be retried using normal volume backoff and will be reported on the pod reason and message. The types of objects that may be mounted by this volume are defined by the container runtime implementation on a host machine and at minimum must include all valid types supported by the container image field. The OCI object gets mounted in a single directory (spec.containers[*].volumeMounts.mountPath) by merging the manifest layers in the same way as for container images. The volume will be mounted read-only (ro). Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33. The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type."
+     "description": "image represents an OCI object (a container image or artifact) pulled and mounted on the kubelet's host machine. The volume is resolved at pod startup depending on which PullPolicy value is provided:\n\n- Always: the kubelet always attempts to pull the reference. Container creation will fail If the pull fails. - Never: the kubelet never pulls the reference and only uses a local image or artifact. Container creation will fail if the reference isn't present. - IfNotPresent: the kubelet pulls if the reference isn't already present on disk. Container creation will fail if the reference isn't present and the pull fails.\n\nThe volume gets re-resolved if the pod gets deleted and recreated, which means that new remote content will become available on pod recreation. A failure to resolve or pull the image during pod startup will block containers from starting and may add significant latency. Failures will be retried using normal volume backoff and will be reported on the pod reason and message. The types of objects that may be mounted by this volume are defined by the container runtime implementation on a host machine and at minimum must include all valid types supported by the container image field. The OCI object gets mounted in a single directory (spec.containers[*].volumeMounts.mountPath) by merging the manifest layers in the same way as for container images. The volume will be mounted read-only (ro) and non-executable files (noexec). Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33. The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type."
     },
     "iscsi": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ISCSIVolumeSource",
@@ -3623,7 +3748,7 @@
     },
     "portworxVolume": {
      "$ref": "#/definitions/io.k8s.api.core.v1.PortworxVolumeSource",
-     "description": "portworxVolume represents a portworx volume attached and mounted on kubelets host machine. Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type are redirected to the pxd.portworx.com CSI driver."
+     "description": "portworxVolume represents a portworx volume attached and mounted on kubelets host machine. Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type are redirected to the pxd.portworx.com CSI driver when the CSIMigrationPortworx feature-gate is on."
     },
     "projected": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ProjectedVolumeSource",
@@ -3733,10 +3858,6 @@
     "recursiveReadOnly": {
      "description": "RecursiveReadOnly must be set to Disabled, Enabled, or unspecified (for non-readonly mounts). An IfPossible value in the original VolumeMount must be translated to Disabled or Enabled, depending on the mount result.",
      "type": "string"
-    },
-    "volumeStatus": {
-     "$ref": "#/definitions/io.k8s.api.core.v1.VolumeStatus",
-     "description": "volumeStatus represents volume-type-specific status about the mounted volume."
     }
    },
    "required": [
@@ -3791,16 +3912,6 @@
      },
      "description": "Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. Requests cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
      "type": "object"
-    }
-   },
-   "type": "object"
-  },
-  "io.k8s.api.core.v1.VolumeStatus": {
-   "description": "VolumeStatus represents the status of a mounted volume. At most one of its members must be specified.",
-   "properties": {
-    "image": {
-     "$ref": "#/definitions/io.k8s.api.core.v1.ImageVolumeStatus",
-     "description": "image represents an OCI object (a container image or artifact) pulled and mounted on the kubelet's host machine."
     }
    },
    "type": "object"

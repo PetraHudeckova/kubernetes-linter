@@ -1,4 +1,5 @@
 import { lintSchema, isPlainObject, type Schema } from './schema.js';
+import { KINDS } from './kinds.js';
 import { defaultSchema } from './schemas.js';
 import { parseDocuments, findDuplicateKeys, locate, locateSyntaxError, type ParsedDoc } from './parse.js';
 import { createContext } from './rules/context.js';
@@ -61,17 +62,23 @@ function lintOne(parsed: ParsedDoc, schema: Schema): Finding[] {
       ruleId: 'lint/unsupported-kind',
       severity: 'info',
       path: ['kind'],
-      message: `This linter only understands Pod, so "${result.unsupportedKind}" was not checked.`,
+      message: `This linter understands Pod and Deployment, so "${result.unsupportedKind}" was not checked.`,
       explanation:
-        'Workload controllers such as Deployment, StatefulSet, Job and CronJob embed a Pod template. You can lint the template on its own by pasting it as a Pod, with the template\'s metadata and spec under a "kind: Pod" document.',
+        'Other workload controllers — StatefulSet, DaemonSet, Job, CronJob — embed a Pod template the same way a Deployment does. You can lint that template on its own by pasting it as a Pod, with the template\'s metadata and spec under a "kind: Pod" document.',
     });
     return findings;
   }
 
   if (!isPlainObject(value)) return findings;
 
-  const ctx = createContext(value, schema, findings);
-  for (const rule of RULES) rule.run(ctx);
+  const kind = result.kind === undefined ? undefined : KINDS[result.kind];
+  if (!kind) return findings;
+
+  const kindSchema = schema.for(kind.kind);
+  if (!kindSchema) return findings;
+
+  const ctx = createContext(value, kind, kindSchema, findings);
+  for (const rule of [...RULES, ...kind.rules]) rule.run(ctx);
 
   return findings;
 }

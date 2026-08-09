@@ -13,10 +13,10 @@ const NAME_DOCS =
 export const metadataRule: Rule = {
   id: 'pod/metadata',
   run(ctx: RuleContext) {
-    const metadata = asObject(ctx.pod['metadata']);
+    const metadata = asObject(ctx.doc['metadata']);
 
     if (!metadata) {
-      if (ctx.pod['metadata'] === undefined) {
+      if (ctx.doc['metadata'] === undefined) {
         ctx.report({
           ruleId: 'pod/missing-metadata',
           severity: 'error',
@@ -40,7 +40,7 @@ export const metadataRule: Rule = {
         path: ['metadata'],
         message: 'Required field "metadata.name" is missing.',
         explanation:
-          'A Pod must be named. Use "name" for a fixed name, or "generateName" to have the apiserver append a random suffix.',
+          `A ${ctx.kind.kind} must be named. Use "name" for a fixed name, or "generateName" to have the apiserver append a random suffix.`,
         docsUrl: NAME_DOCS,
       });
     }
@@ -53,9 +53,9 @@ export const metadataRule: Rule = {
           ruleId: 'pod/invalid-name',
           severity: 'error',
           path: ['metadata', 'name'],
-          message: `"${name}" is not a valid Pod name: it ${check.reason}.`,
+          message: `"${name}" is not a valid ${ctx.kind.kind} name: it ${check.reason}.`,
           explanation:
-            'Pod names are DNS subdomain names: lowercase letters, digits, "-" and ".", starting and ending with an alphanumeric character, at most 253 characters.',
+            'Object names are DNS subdomain names: lowercase letters, digits, "-" and ".", starting and ending with an alphanumeric character, at most 253 characters.',
           docsUrl: NAME_DOCS,
           fix: suggestion
             ? {
@@ -129,11 +129,11 @@ export const metadataRule: Rule = {
   },
 };
 
-function checkKeyedMap(
+export function checkKeyedMap(
   ctx: RuleContext,
   value: unknown,
   basePath: (string | number)[],
-  kind: 'label' | 'annotation',
+  noun: 'label' | 'annotation',
   checkValues: boolean,
 ): void {
   const map = asObject(value);
@@ -143,11 +143,11 @@ function checkKeyedMap(
     const keyCheck = isQualifiedName(key);
     if (!keyCheck.ok) {
       ctx.report({
-        ruleId: `pod/invalid-${kind}-key`,
+        ruleId: `pod/invalid-${noun}-key`,
         severity: 'error',
         path: [...basePath, key],
         anchor: 'key',
-        message: `"${key}" is not a valid ${kind} key: it ${keyCheck.reason}.`,
+        message: `"${key}" is not a valid ${noun} key: it ${keyCheck.reason}.`,
         explanation:
           'Keys are qualified names: an optional DNS subdomain prefix and a "/", then up to 63 characters of alphanumerics, "-", "_" or ".".',
       });
