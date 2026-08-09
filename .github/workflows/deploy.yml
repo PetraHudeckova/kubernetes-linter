@@ -16,6 +16,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # configure-pages needs these to switch the site over to Actions-based
+      # publishing. Without that step GitHub keeps its legacy branch builder,
+      # which serves the repository root verbatim — the unbuilt source, with no
+      # stylesheet and a <script src="/src/main.ts"> the browser cannot run.
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,7 +37,18 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Configure Pages
+        id: pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Build
+        # Take the base path from Pages when it is known, so the build keeps
+        # working if the repository is ever renamed.
+        env:
+          VITE_BASE: ${{ steps.pages.outputs.base_path }}
         run: npm run build
 
       - name: Upload Pages artifact

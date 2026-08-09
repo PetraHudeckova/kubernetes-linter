@@ -158,15 +158,21 @@ export function locate(
     range = docRange ? [docRange[0], Math.max(docRange[0], docRange[1])] : [0, 0];
   }
 
-  // Never emit a zero-width marker: CodeMirror renders it as an invisible
-  // squiggle. Widen to the end of the line, or at least one character.
   let [from, to] = range;
   from = Math.max(0, Math.min(from, text.length));
   to = Math.max(from, Math.min(to, text.length));
+
+  // Keep every marker to a single line. A finding on a mapping or a sequence
+  // resolves to the whole collection, which would otherwise draw a squiggle
+  // across dozens of lines and read as though the entire file were wrong.
+  const endOfLine = text.indexOf('\n', from);
+  const lineLimit = endOfLine === -1 ? text.length : endOfLine;
+  to = Math.min(to, lineLimit);
+
+  // Never emit a zero-width marker: CodeMirror renders it as an invisible
+  // squiggle. Widen to the end of the line, or at least one character.
   if (to === from) {
-    const eol = text.indexOf('\n', from);
-    to = eol === -1 ? Math.min(text.length, from + 1) : eol;
-    if (to === from) to = Math.min(text.length, from + 1);
+    to = lineLimit > from ? lineLimit : Math.min(text.length, from + 1);
   }
 
   const { line, column } = offsetToLineColumn(text, from);

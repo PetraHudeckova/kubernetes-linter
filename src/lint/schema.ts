@@ -245,6 +245,9 @@ function walk(
           ruleId: 'schema/required-field',
           severity: 'error',
           path,
+          // Point at the key that owns the missing field rather than at its
+          // whole value block.
+          anchor: 'key',
           message: `Required field "${name}" is missing${
             name in value ? ' (it is present but empty)' : ''
           }.`,

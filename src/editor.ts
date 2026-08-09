@@ -2,6 +2,8 @@ import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { Decoration, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import { yaml } from '@codemirror/lang-yaml';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { indentWithTab } from '@codemirror/commands';
 import { schema } from './lint/index.js';
@@ -79,6 +81,8 @@ export function createEditor(parent: HTMLElement, initialText: string, hooks: Ed
           if (update.docChanged) hooks.onChange(update.state.doc.toString());
         }),
         theme,
+        // Added after basicSetup so it wins over the bundled fallback style.
+        syntaxHighlighting(highlighting),
       ] satisfies Extension[],
     }),
   });
@@ -157,11 +161,73 @@ const fieldTooltip = hoverTooltip((view, pos) => {
   };
 });
 
+/**
+ * Colours come from the page's CSS variables rather than being baked in, so
+ * the editor follows the light/dark scheme along with everything else.
+ * CodeMirror's bundled highlight style is light-only, and its dark blues on a
+ * dark background are unreadable.
+ */
+const highlighting = HighlightStyle.define([
+  { tag: [tags.propertyName, tags.definition(tags.propertyName)], color: 'var(--syntax-key)' },
+  { tag: [tags.string, tags.special(tags.string)], color: 'var(--syntax-string)' },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: 'var(--syntax-literal)' },
+  { tag: [tags.keyword, tags.operatorKeyword], color: 'var(--syntax-literal)' },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: 'var(--syntax-comment)', fontStyle: 'italic' },
+  { tag: [tags.meta, tags.documentMeta, tags.punctuation, tags.separator], color: 'var(--syntax-punctuation)' },
+  { tag: tags.invalid, color: 'var(--danger)' },
+]);
+
 const theme = EditorView.theme({
-  '&': { height: '100%', fontSize: '13px' },
+  '&': {
+    height: '100%',
+    fontSize: '13px',
+    color: 'var(--text)',
+    backgroundColor: 'var(--surface)',
+  },
   '.cm-scroller': {
     fontFamily: 'var(--font-mono)',
     lineHeight: '1.6',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--surface)',
+    color: 'var(--text-muted)',
+    borderRight: '1px solid var(--border)',
+  },
+  '.cm-activeLine': { backgroundColor: 'var(--active-line)' },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'var(--active-line)',
+    color: 'var(--text)',
+  },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text)' },
+  '.cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'var(--selection)',
+  },
+  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'var(--selection)' },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--surface-sunken)',
+    color: 'var(--text-muted)',
+    border: '1px solid var(--border)',
+  },
+  '.cm-panels': { backgroundColor: 'var(--surface-sunken)', color: 'var(--text)' },
+  '.cm-tooltip': {
+    backgroundColor: 'var(--surface)',
+    color: 'var(--text)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '8px',
+    boxShadow: '0 4px 16px rgb(0 0 0 / 18%)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:before': { borderTopColor: 'var(--border-strong)' },
+  '.cm-tooltip .cm-tooltip-arrow:after': { borderTopColor: 'var(--surface)' },
+  '.cm-diagnostic': { fontFamily: 'var(--font-sans)', fontSize: '12.5px' },
+  '.cm-diagnostic-error': { borderLeftColor: 'var(--danger)' },
+  '.cm-diagnostic-warning': { borderLeftColor: 'var(--warn)' },
+  '.cm-diagnostic-info': { borderLeftColor: 'var(--info)' },
+  '.cm-diagnosticAction': {
+    backgroundColor: 'var(--accent)',
+    color: '#fff',
+    borderRadius: '5px',
+    padding: '0.1rem 0.4rem',
+    marginLeft: '0.5rem',
   },
   '.cm-content': { paddingBlock: '0.75rem' },
   '.cm-changed-line': {

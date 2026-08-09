@@ -28,10 +28,37 @@ describe('finding locations', () => {
     expect(text.slice(finding.from, finding.to)).toBe('imagePullPolcy');
   });
 
-  it('anchors a missing required field on the parent', () => {
+  it('anchors a missing required field on the key that should contain it', () => {
     const text = 'apiVersion: v1\nkind: Pod\nmetadata:\n  name: web\nspec:\n  restartPolicy: Always\n';
     const finding = findings(text).find((entry) => entry.ruleId === 'schema/required-field')!;
-    expect(finding.line).toBe(6);
+    expect(finding.line).toBe(5);
+    expect(text.slice(finding.from, finding.to)).toBe('spec');
+  });
+
+  it('never spans more than one line', () => {
+    // A finding on a collection resolves to the whole block; drawing that would
+    // squiggle the entire document and read as though nothing were valid.
+    const text = `apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+spec:
+  restartPolicy: Always
+  nodeName: node-1
+  hostNetwork: false
+`;
+    for (const finding of lint(text).findings) {
+      expect(text.slice(finding.from, finding.to)).not.toContain('\n');
+    }
+
+    for (const example of EXAMPLES) {
+      for (const finding of lint(example.yaml).findings) {
+        expect(
+          example.yaml.slice(finding.from, finding.to),
+          `${example.id}/${finding.ruleId}`,
+        ).not.toContain('\n');
+      }
+    }
   });
 
   it('never produces a zero-width or out-of-bounds range', () => {
