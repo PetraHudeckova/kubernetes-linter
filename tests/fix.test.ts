@@ -17,7 +17,7 @@ spec:
       image: 'nginx:1.27'
       imagePullPolicy: always
 `;
-    const finding = expectRule(before, 'pod/invalid-enum-value');
+    const finding = expectRule(before, 'enum/invalid-value');
     const after = applyFix(before, finding.fix!);
 
     expect(after).toContain('# the pod name');
@@ -40,7 +40,7 @@ spec:
           image: nginx
           imagePullPolicy: always
 `;
-    const after = applyFix(before, expectRule(before, 'pod/invalid-enum-value').fix!);
+    const after = applyFix(before, expectRule(before, 'enum/invalid-value').fix!);
     expect(after).toContain('    containers:');
     expect(after).toContain('        - name: web');
   });
@@ -56,7 +56,7 @@ spec:
     image: nginx
     imagePullPolicy: always
 `;
-    const after = applyFix(before, expectRule(before, 'pod/invalid-enum-value').fix!);
+    const after = applyFix(before, expectRule(before, 'enum/invalid-value').fix!);
     expect(after).toContain('  containers:\n  - name: web');
   });
 
@@ -152,7 +152,7 @@ spec:
       image: nginx
       imagePullPolicy: always
 `;
-    const finding = expectRule(before, 'pod/invalid-enum-value');
+    const finding = expectRule(before, 'enum/invalid-value');
     expect(finding.docIndex).toBe(1);
 
     const after = applyFix(before, finding.fix!, finding.docIndex);
@@ -234,7 +234,7 @@ spec:
     const { text, applied } = applySafeFixes(before);
     expect(applied).toBe(1);
     expect(text).toContain('name: Bad-Name');
-    expect(lint(text).findings.map((finding) => finding.ruleId)).toEqual(['pod/invalid-name']);
+    expect(lint(text).findings.map((finding) => finding.ruleId)).toEqual(['meta/invalid-name']);
   });
 
   it('fixes against the version it is given, not the default', async () => {

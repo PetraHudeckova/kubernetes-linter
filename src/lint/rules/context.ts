@@ -17,7 +17,11 @@ export interface ContainerRef {
 export interface RuleContext {
   /** The whole document — a Pod, a Deployment, whatever `kind` declared. */
   doc: Record<string, unknown>;
-  /** The PodSpec, wherever this kind keeps it. */
+  /**
+   * The PodSpec, wherever this kind keeps it. Empty for a kind that describes
+   * no Pod, which is safe because the rules that read it — everything in
+   * `POD_RULES` — do not run for such a kind at all.
+   */
   spec: Record<string, unknown>;
   kind: KindDescriptor;
   /** Every container from all three lists, in declaration order. */
@@ -32,7 +36,8 @@ export interface RuleContext {
   /**
    * Absolute path to a field inside the PodSpec. Rules address the spec
    * relatively — `ctx.at('dnsPolicy')` is `spec.dnsPolicy` on a Pod and
-   * `spec.template.spec.dnsPolicy` on a Deployment.
+   * `spec.template.spec.dnsPolicy` on a Deployment. Like `spec`, meaningful
+   * only for a kind that has a pod template.
    */
   at(...segments: (string | number)[]): Path;
   /** Absolute path to a field inside the pod's own metadata. */
@@ -59,7 +64,11 @@ export function createContext(
   schema: KindSchema,
   findings: Finding[],
 ): RuleContext {
-  const spec = descend(doc, kind.specPath);
+  // A kind with no pod template still gets a context: its own rules address the
+  // document directly, exactly as the controller rules do. The pod-shaped
+  // members below then describe nothing, which no rule that runs for it reads.
+  const specPath = kind.podTemplate?.specPath ?? [];
+  const spec = descend(doc, specPath);
   const containers: ContainerRef[] = [];
 
   const lists: ContainerList[] = ['containers', 'initContainers', 'ephemeralContainers'];
@@ -73,7 +82,7 @@ export function createContext(
         list,
         index,
         container: entry,
-        path: [...kind.specPath, list, index],
+        path: [...specPath, list, index],
         label: name ? `${singular(list)} "${name}"` : `${singular(list)} #${index + 1}`,
       });
     });
@@ -86,9 +95,9 @@ export function createContext(
     containers,
     generatedVolumes: generatedVolumes(doc, kind),
     schema,
-    at: (...segments) => [...kind.specPath, ...segments],
-    meta: (...segments) => [...kind.podMetadataPath, ...segments],
-    field: (...segments) => [...kind.specPath, ...segments].join('.'),
+    at: (...segments) => [...specPath, ...segments],
+    meta: (...segments) => [...(kind.podTemplate?.metadataPath ?? []), ...segments],
+    field: (...segments) => [...specPath, ...segments].join('.'),
     supports: (path) => schema.describe(path) !== undefined,
     report: (finding) => findings.push(finding),
   };
@@ -111,8 +120,9 @@ function valueAt(value: Record<string, unknown>, path: Path): unknown {
 
 /** The names of the volumes this kind's controller generates, if any. */
 function generatedVolumes(doc: Record<string, unknown>, kind: KindDescriptor): string[] {
-  if (!kind.claimTemplatesPath) return [];
-  const templates = valueAt(doc, kind.claimTemplatesPath);
+  const claimTemplatesPath = kind.podTemplate?.claimTemplatesPath;
+  if (!claimTemplatesPath) return [];
+  const templates = valueAt(doc, claimTemplatesPath);
   if (!Array.isArray(templates)) return [];
 
   const names: string[] = [];

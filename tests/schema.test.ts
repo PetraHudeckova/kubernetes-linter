@@ -122,7 +122,7 @@ describe('schema conformance', () => {
       const result = findings(VALID_POD.replace('kind: Pod', 'kind: Job'));
       expect(result.map((finding) => finding.ruleId)).toEqual(['lint/unsupported-kind']);
       expect(result[0]?.severity).toBe('info');
-      expect(result[0]?.message).toContain('Pod, Deployment, StatefulSet and DaemonSet');
+      expect(result[0]?.message).toContain('Pod, Deployment, StatefulSet, DaemonSet and Service');
     });
 
     it('expects the group-prefixed apiVersion for a Deployment', () => {
@@ -222,8 +222,14 @@ describe('field descriptions', () => {
     expect(statefulSet.describe(['spec', 'strategy'])).toBeUndefined();
   });
 
+  it('resolves a Service field, which no pod template reaches', () => {
+    const service = schema.for('Service')!;
+    expect(service.describe(['spec', 'ports', 0, 'targetPort'])?.type).toBe('IntOrString');
+    expect(service.describe(['spec', 'containers'])).toBeUndefined();
+  });
+
   it('carries a root for every supported kind', () => {
-    expect(schema.kinds).toEqual(['Pod', 'Deployment', 'StatefulSet', 'DaemonSet']);
+    expect(schema.kinds).toEqual(['Pod', 'Deployment', 'StatefulSet', 'DaemonSet', 'Service']);
     expect(schema.for('Job')).toBeUndefined();
   });
 });

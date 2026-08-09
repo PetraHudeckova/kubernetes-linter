@@ -3,7 +3,7 @@ import { KINDS } from './kinds.js';
 import { defaultSchema } from './schemas.js';
 import { parseDocuments, findDuplicateKeys, locate, locateSyntaxError, type ParsedDoc } from './parse.js';
 import { createContext } from './rules/context.js';
-import { RULES } from './rules/registry.js';
+import { POD_RULES, RULES } from './rules/registry.js';
 import { applyFix } from './fix.js';
 import type { Finding, LocatedFinding } from './types.js';
 
@@ -78,7 +78,8 @@ function lintOne(parsed: ParsedDoc, schema: Schema): Finding[] {
   if (!kindSchema) return findings;
 
   const ctx = createContext(value, kind, kindSchema, findings);
-  for (const rule of [...RULES, ...kind.rules]) rule.run(ctx);
+  const podRules = kind.podTemplate ? POD_RULES : [];
+  for (const rule of [...RULES, ...podRules, ...kind.rules]) rule.run(ctx);
 
   return findings;
 }

@@ -2,29 +2,20 @@ import type { Path } from './types.js';
 import type { Rule } from './rules/context.js';
 import { daemonSetRule } from './rules/daemonset.js';
 import { deploymentRule } from './rules/deployment.js';
+import { serviceRule } from './rules/service.js';
 import { statefulSetRule } from './rules/statefulset.js';
 
 /**
- * What the rule layer needs to know about a kind. Everything else is derived
- * from the schema bundle, which owns the root definition names — a descriptor
- * is keyed by kind name and never repeats a `$ref`.
- *
- * The pod spec is the only thing that moves between kinds: a Pod carries it at
- * `spec`, a Deployment at `spec.template.spec`. Rules address it through
- * `ctx.at(...)`, so adding a kind is a matter of naming those two paths.
+ * Where a kind keeps the Pod it describes. This is the only thing that moves
+ * between kinds: a Pod carries its spec at `spec`, a Deployment at
+ * `spec.template.spec`. Rules address it through `ctx.at(...)`, so teaching the
+ * shared rule set a new workload kind is a matter of naming these paths.
  */
-export interface KindDescriptor {
-  kind: string;
+export interface PodTemplate {
   /** Where the PodSpec sits, relative to the document root. */
   specPath: Path;
   /** Where the pod's own metadata sits, relative to the document root. */
-  podMetadataPath: Path;
-  /**
-   * What `metadata.name` has to look like. Most kinds take a DNS subdomain;
-   * a StatefulSet takes a label, since its name is the prefix of every Pod
-   * name it generates and those are hostnames. Defaults to "subdomain".
-   */
-  nameFormat?: 'subdomain' | 'label';
+  metadataPath: Path;
   /**
    * A list of `{ metadata: { name } }` entries the controller turns into one
    * Pod volume each, named after the entry — a StatefulSet's
@@ -32,40 +23,64 @@ export interface KindDescriptor {
    * pod spec's own `volumes`, which is what `ctx.generatedVolumes` carries.
    */
   claimTemplatesPath?: Path;
+}
+
+/**
+ * What the rule layer needs to know about a kind. Everything else is derived
+ * from the schema bundle, which owns the root definition names — a descriptor
+ * is keyed by kind name and never repeats a `$ref`.
+ */
+export interface KindDescriptor {
+  kind: string;
+  /**
+   * Absent for a kind that describes no Pod at all: a Service selects Pods by
+   * label, it does not create them. The shared PodSpec rules run only for the
+   * kinds that have one, so such a kind is checked by the schema layer, the
+   * document-level rules and its own module alone.
+   */
+  podTemplate?: PodTemplate;
+  /**
+   * What `metadata.name` has to look like. Most kinds take a DNS subdomain;
+   * a StatefulSet takes a label, since its name is the prefix of every Pod
+   * name it generates and those are hostnames; a Service takes the stricter
+   * RFC 1035 label, since its name is the first component of an SRV record.
+   * Defaults to "subdomain".
+   */
+  nameFormat?: 'subdomain' | 'label' | 'rfc1035';
   /** Rules that only make sense for this kind, run after the shared ones. */
   rules: Rule[];
 }
 
+const POD_TEMPLATE: PodTemplate = {
+  specPath: ['spec', 'template', 'spec'],
+  metadataPath: ['spec', 'template', 'metadata'],
+};
+
 export const KINDS: Record<string, KindDescriptor> = {
   Pod: {
     kind: 'Pod',
-    specPath: ['spec'],
-    podMetadataPath: ['metadata'],
+    podTemplate: { specPath: ['spec'], metadataPath: ['metadata'] },
     rules: [],
   },
   Deployment: {
     kind: 'Deployment',
-    specPath: ['spec', 'template', 'spec'],
-    podMetadataPath: ['spec', 'template', 'metadata'],
+    podTemplate: POD_TEMPLATE,
     rules: [deploymentRule],
   },
   StatefulSet: {
     kind: 'StatefulSet',
-    specPath: ['spec', 'template', 'spec'],
-    podMetadataPath: ['spec', 'template', 'metadata'],
+    podTemplate: { ...POD_TEMPLATE, claimTemplatesPath: ['spec', 'volumeClaimTemplates'] },
     nameFormat: 'label',
-    claimTemplatesPath: ['spec', 'volumeClaimTemplates'],
     rules: [statefulSetRule],
   },
   DaemonSet: {
     kind: 'DaemonSet',
-    specPath: ['spec', 'template', 'spec'],
-    podMetadataPath: ['spec', 'template', 'metadata'],
+    podTemplate: POD_TEMPLATE,
     rules: [daemonSetRule],
   },
+  Service: {
+    kind: 'Service',
+    nameFormat: 'rfc1035',
+    rules: [serviceRule],
+  },
 };
-
-/** Render a pod-spec-relative field for a message, e.g. `spec.template.spec.volumes`. */
-export function specField(descriptor: KindDescriptor, ...segments: string[]): string {
-  return [...descriptor.specPath, ...segments].join('.');
-}

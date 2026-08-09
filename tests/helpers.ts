@@ -212,3 +212,29 @@ ${templateSpecFragment}      containers:
 export function daemonSetWithPodSpec(templateSpecFragment: string): string {
   return daemonSet('', templateSpecFragment);
 }
+
+/** A minimal valid Service that individual tests mutate. */
+export const VALID_SERVICE = `apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+`;
+
+/**
+ * Build a Service from a fragment of ServiceSpec. Unlike the workload helpers
+ * there is no template to keep consistent, so the fragment is the whole spec:
+ * a Service is only valid in combinations, and most tests are about which
+ * fields may sit next to which `type`. Fragments are indented two spaces,
+ * matching `pod()`.
+ */
+export function service(specFragment: string, metadataFragment = '  name: web\n'): string {
+  return `apiVersion: v1\nkind: Service\nmetadata:\n${metadataFragment}spec:\n${specFragment}`;
+}
