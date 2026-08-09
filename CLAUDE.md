@@ -95,7 +95,7 @@ Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must b
 `ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
 wrong node on a Deployment and silently close the gate on every version.
 
-### Kinds (Pod, Deployment)
+### Kinds (Pod, Deployment, StatefulSet)
 
 The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
 reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
@@ -104,25 +104,35 @@ no root for still yields `unsupportedKind` and a `lint/unsupported-kind` note. B
 bundle carries every root, a multi-document manifest can mix kinds with no extra chunk load —
 which is what keeps `lint()` synchronous.
 
-A `KindDescriptor` is only `{ kind, specPath, podMetadataPath, rules }`. The root `$ref` is
-deliberately *not* in it: that lives in the generated bundle, so the generator stays the single
-source of truth for definition names.
+A `KindDescriptor` is only `{ kind, specPath, podMetadataPath, claimTemplatesPath?, rules }`.
+The root `$ref` is deliberately *not* in it: that lives in the generated bundle, so the
+generator stays the single source of truth for definition names. `claimTemplatesPath` is the
+one concession to a kind that generates volumes: a StatefulSet's controller adds one Pod volume
+per `volumeClaimTemplates` entry, named after it, so those names reach `volumes.ts` through
+`ctx.generatedVolumes` and a mount referring to one is not reported as undeclared.
 
 **Rules address the PodSpec relatively.** `ctx.at(...)` prefixes `specPath`, `ctx.meta(...)`
 prefixes `podMetadataPath`, and `ctx.field(...)` renders a dotted name for a message. There are
 no `['spec', …]` literals left in `rules/`; reintroducing one silently breaks Deployment. The
-one deliberate exception is `rules/deployment.ts`, which addresses `spec.selector` and
-`spec.strategy` — fields of the Deployment itself, not of any pod spec.
+deliberate exceptions are `rules/deployment.ts` and `rules/statefulset.ts`, which address
+`spec.selector`, `spec.strategy`, `spec.updateStrategy` and the like — fields of the controller
+itself, not of any pod spec.
 
 `ctx.doc` is the document root (used by `metadata.ts` and `enums.ts`); `ctx.spec` is the
 PodSpec wherever this kind keeps it. `ContainerRef.path` already carries the prefix, so any
 rule built on `ctx.containers` is kind-correct for free.
 
 Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
-and `deployment/*` for checks on the Deployment itself. `Schema` is per version and holds every
-root; `Schema.for(kind)` returns the `KindSchema` view that both lint layers actually use.
+and `deployment/*` / `statefulset/*` for checks on the controller itself. `Schema` is per
+version and holds every root; `Schema.for(kind)` returns the `KindSchema` view that both lint
+layers actually use.
 
-Adding a third kind: a root in `scripts/generate-schema.mjs`, a descriptor in `kinds.ts`, and
+Each controller keeps its **own** rule module rather than sharing one: `deployment.ts` and
+`statefulset.ts` overlap on the selector and template checks, but the two upstream validators
+are separate, diverge in wording and in what they forbid, and are versioned independently — so
+they are kept independent here too, and a change to one is not a change to the other.
+
+Adding a fourth kind: a root in `scripts/generate-schema.mjs`, a descriptor in `kinds.ts`, and
 whatever rules are unique to it. The reusable machinery — the schema walk, `walkFields`,
 `enums.ts`, `fix.ts`, `parse.ts`, `k8s/*` — is kind-agnostic; `walkFields` keys on the resolved
 `$ref` owner (`Container.imagePullPolicy`), so it stays correct wherever a type is reused.
@@ -130,9 +140,10 @@ whatever rules are unique to it. The reusable machinery — the schema walk, `wa
 ### Schema bundles
 
 `scripts/generate-schema.mjs` unions the transitive `$ref` closure of every root in `ROOTS`
-(141 defs at 1.36, ~250 KB on disk, ~35 KB brotli) and writes `{ k8sVersion, source, generatedAt,
+(153 defs at 1.36, ~270 KB on disk, ~37 KB brotli) and writes `{ k8sVersion, source, generatedAt,
 roots, definitions }`. One file per version rather than one per kind: the Deployment closure is
-a near-total superset of Pod's, so a second file would be a near-duplicate. API descriptions are kept on purpose — they are what the hover tooltip and
+a near-total superset of Pod's and the StatefulSet one adds little beyond `PersistentVolumeClaim`,
+so per-kind files would be near-duplicates. API descriptions are kept on purpose — they are what the hover tooltip and
 most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,
@@ -147,8 +158,9 @@ them property-by-property would produce nonsense.
 - Rules never re-report what layer 1 already caught. Everything out of YAML is `unknown`;
   narrow with `asString`/`asNumber`/`asObject`/`asArray` from `rules/context.ts` and skip
   wrong-shaped values silently.
-- Rule IDs are `pod/<thing>` for PodSpec checks and `deployment/<thing>` for checks on the
-  Deployment itself; schema-layer IDs are `schema/<thing>`; parser IDs are `yaml/<thing>`.
+- Rule IDs are `pod/<thing>` for PodSpec checks and `deployment/<thing>` / `statefulset/<thing>`
+  for checks on the controller itself; schema-layer IDs are `schema/<thing>`; parser IDs are
+  `yaml/<thing>`.
 - Findings explain *why*, usually by quoting the field's own API description and pulling its
   "More info:" URL via `docsUrlFrom()`.
 - Comments in this codebase explain non-obvious decisions rather than restating code. Match
@@ -156,4 +168,5 @@ them property-by-property would produce nonsense.
 - `EXAMPLES` in `src/ui/examples.ts` is load-bearing: `tests/locations.test.ts` iterates it
   (the `valid` example must lint clean, others must not, and safe fixes must not make things
   worse) and indexes entries positionally, so append rather than insert. `tests/versions.test.ts`
-  lints `valid` and `VALID_DEPLOYMENT` on all 12 versions as a regeneration tripwire.
+  lints `valid`, `VALID_DEPLOYMENT` and `VALID_STATEFULSET` on all 12 versions as a regeneration
+  tripwire.

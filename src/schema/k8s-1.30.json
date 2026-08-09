@@ -4,7 +4,8 @@
  "generatedAt": "2026-08-09",
  "roots": {
   "Pod": "io.k8s.api.core.v1.Pod",
-  "Deployment": "io.k8s.api.apps.v1.Deployment"
+  "Deployment": "io.k8s.api.apps.v1.Deployment",
+  "StatefulSet": "io.k8s.api.apps.v1.StatefulSet"
  },
  "definitions": {
   "io.k8s.api.apps.v1.Deployment": {
@@ -199,6 +200,250 @@
     "maxUnavailable": {
      "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
      "description": "The maximum number of pods that can be unavailable during the update. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). Absolute number is calculated from percentage by rounding down. This can not be 0 if MaxSurge is 0. Defaults to 25%. Example: when this is set to 30%, the old ReplicaSet can be scaled down to 70% of desired pods immediately when the rolling update starts. Once new pods are ready, old ReplicaSet can be scaled down further, followed by scaling up the new ReplicaSet, ensuring that the total number of pods available at all times during the update is at least 70% of desired pods."
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.RollingUpdateStatefulSetStrategy": {
+   "description": "RollingUpdateStatefulSetStrategy is used to communicate parameter for RollingUpdateStatefulSetStrategyType.",
+   "properties": {
+    "maxUnavailable": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of pods that can be unavailable during the update. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). Absolute number is calculated from percentage by rounding up. This can not be 0. Defaults to 1. This field is alpha-level and is only honored by servers that enable the MaxUnavailableStatefulSet feature. The field applies to all pods in the range 0 to Replicas-1. That means if there is any unavailable pod in the range 0 to Replicas-1, it will be counted towards MaxUnavailable."
+    },
+    "partition": {
+     "description": "Partition indicates the ordinal at which the StatefulSet should be partitioned for updates. During a rolling update, all pods from ordinal Replicas-1 to Partition are updated. All pods from ordinal Partition-1 to 0 remain untouched. This is helpful in being able to do a canary based deployment. The default value is 0.",
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.StatefulSet": {
+   "description": "StatefulSet represents a set of pods with consistent identities. Identities are defined as:\n  - Network: A single stable DNS and hostname.\n  - Storage: As many VolumeClaims as requested.\n\nThe StatefulSet guarantees that a given network identity will always map to the same storage identity.",
+   "properties": {
+    "apiVersion": {
+     "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.StatefulSetSpec",
+     "description": "Spec defines the desired identities of pods in this set."
+    },
+    "status": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.StatefulSetStatus",
+     "description": "Status is the current status of Pods in this StatefulSet. This data may be out of date by some window of time."
+    }
+   },
+   "type": "object",
+   "x-kubernetes-group-version-kind": [
+    {
+     "group": "apps",
+     "kind": "StatefulSet",
+     "version": "v1"
+    }
+   ]
+  },
+  "io.k8s.api.apps.v1.StatefulSetCondition": {
+   "description": "StatefulSetCondition describes the state of a statefulset at a certain point.",
+   "properties": {
+    "lastTransitionTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "Last time the condition transitioned from one status to another."
+    },
+    "message": {
+     "description": "A human readable message indicating details about the transition.",
+     "type": "string"
+    },
+    "reason": {
+     "description": "The reason for the condition's last transition.",
+     "type": "string"
+    },
+    "status": {
+     "description": "Status of the condition, one of True, False, Unknown.",
+     "type": "string"
+    },
+    "type": {
+     "description": "Type of statefulset condition.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "status"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.StatefulSetOrdinals": {
+   "description": "StatefulSetOrdinals describes the policy used for replica ordinal assignment in this StatefulSet.",
+   "properties": {
+    "start": {
+     "description": "start is the number representing the first replica's index. It may be used to number replicas from an alternate index (eg: 1-indexed) over the default 0-indexed names, or to orchestrate progressive movement of replicas from one StatefulSet to another. If set, replica indices will be in the range:\n  [.spec.ordinals.start, .spec.ordinals.start + .spec.replicas).\nIf unset, defaults to 0. Replica indices will be in the range:\n  [0, .spec.replicas).",
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.StatefulSetPersistentVolumeClaimRetentionPolicy": {
+   "description": "StatefulSetPersistentVolumeClaimRetentionPolicy describes the policy used for PVCs created from the StatefulSet VolumeClaimTemplates.",
+   "properties": {
+    "whenDeleted": {
+     "description": "WhenDeleted specifies what happens to PVCs created from StatefulSet VolumeClaimTemplates when the StatefulSet is deleted. The default policy of `Retain` causes PVCs to not be affected by StatefulSet deletion. The `Delete` policy causes those PVCs to be deleted.",
+     "type": "string"
+    },
+    "whenScaled": {
+     "description": "WhenScaled specifies what happens to PVCs created from StatefulSet VolumeClaimTemplates when the StatefulSet is scaled down. The default policy of `Retain` causes PVCs to not be affected by a scaledown. The `Delete` policy causes the associated PVCs for any excess pods above the replica count to be deleted.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.StatefulSetSpec": {
+   "description": "A StatefulSetSpec is the specification of a StatefulSet.",
+   "properties": {
+    "minReadySeconds": {
+     "description": "Minimum number of seconds for which a newly created pod should be ready without any of its container crashing for it to be considered available. Defaults to 0 (pod will be considered available as soon as it is ready)",
+     "format": "int32",
+     "type": "integer"
+    },
+    "ordinals": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.StatefulSetOrdinals",
+     "description": "ordinals controls the numbering of replica indices in a StatefulSet. The default ordinals behavior assigns a \"0\" index to the first replica and increments the index by one for each additional replica requested. Using the ordinals field requires the StatefulSetStartOrdinal feature gate to be enabled, which is beta."
+    },
+    "persistentVolumeClaimRetentionPolicy": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.StatefulSetPersistentVolumeClaimRetentionPolicy",
+     "description": "persistentVolumeClaimRetentionPolicy describes the lifecycle of persistent volume claims created from volumeClaimTemplates. By default, all persistent volume claims are created as needed and retained until manually deleted. This policy allows the lifecycle to be altered, for example by deleting persistent volume claims when their stateful set is deleted, or when their pod is scaled down. This requires the StatefulSetAutoDeletePVC feature gate to be enabled, which is alpha.  +optional"
+    },
+    "podManagementPolicy": {
+     "description": "podManagementPolicy controls how pods are created during initial scale up, when replacing pods on nodes, or when scaling down. The default policy is `OrderedReady`, where pods are created in increasing order (pod-0, then pod-1, etc) and the controller will wait until each pod is ready before continuing. When scaling down, the pods are removed in the opposite order. The alternative policy is `Parallel` which will create pods in parallel to match the desired scale without waiting, and on scale down will delete all pods at once.",
+     "type": "string"
+    },
+    "replicas": {
+     "description": "replicas is the desired number of replicas of the given Template. These are replicas in the sense that they are instantiations of the same Template, but individual replicas also have a consistent identity. If unspecified, defaults to 1.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "revisionHistoryLimit": {
+     "description": "revisionHistoryLimit is the maximum number of revisions that will be maintained in the StatefulSet's revision history. The revision history consists of all revisions not represented by a currently applied StatefulSetSpec version. The default value is 10.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "selector": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
+     "description": "selector is a label query over pods that should match the replica count. It must match the pod template's labels. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors"
+    },
+    "serviceName": {
+     "description": "serviceName is the name of the service that governs this StatefulSet. This service must exist before the StatefulSet, and is responsible for the network identity of the set. Pods get DNS/hostnames that follow the pattern: pod-specific-string.serviceName.default.svc.cluster.local where \"pod-specific-string\" is managed by the StatefulSet controller.",
+     "type": "string"
+    },
+    "template": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PodTemplateSpec",
+     "description": "template is the object that describes the pod that will be created if insufficient replicas are detected. Each pod stamped out by the StatefulSet will fulfill this Template, but have a unique identity from the rest of the StatefulSet. Each pod will be named with the format <statefulsetname>-<podindex>. For example, a pod in a StatefulSet named \"web\" with index number \"3\" would be named \"web-3\". The only allowed template.spec.restartPolicy value is \"Always\"."
+    },
+    "updateStrategy": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.StatefulSetUpdateStrategy",
+     "description": "updateStrategy indicates the StatefulSetUpdateStrategy that will be employed to update Pods in the StatefulSet when a revision is made to Template."
+    },
+    "volumeClaimTemplates": {
+     "description": "volumeClaimTemplates is a list of claims that pods are allowed to reference. The StatefulSet controller is responsible for mapping network identities to claims in a way that maintains the identity of a pod. Every claim in this list must have at least one matching (by name) volumeMount in one container in the template. A claim in this list takes precedence over any volumes in the template, with the same name.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.core.v1.PersistentVolumeClaim"
+     },
+     "type": "array",
+     "x-kubernetes-list-type": "atomic"
+    }
+   },
+   "required": [
+    "selector",
+    "template",
+    "serviceName"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.StatefulSetStatus": {
+   "description": "StatefulSetStatus represents the current state of a StatefulSet.",
+   "properties": {
+    "availableReplicas": {
+     "description": "Total number of available pods (ready for at least minReadySeconds) targeted by this statefulset.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "collisionCount": {
+     "description": "collisionCount is the count of hash collisions for the StatefulSet. The StatefulSet controller uses this field as a collision avoidance mechanism when it needs to create the name for the newest ControllerRevision.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "conditions": {
+     "description": "Represents the latest available observations of a statefulset's current state.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.apps.v1.StatefulSetCondition"
+     },
+     "type": "array",
+     "x-kubernetes-list-map-keys": [
+      "type"
+     ],
+     "x-kubernetes-list-type": "map",
+     "x-kubernetes-patch-merge-key": "type",
+     "x-kubernetes-patch-strategy": "merge"
+    },
+    "currentReplicas": {
+     "description": "currentReplicas is the number of Pods created by the StatefulSet controller from the StatefulSet version indicated by currentRevision.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "currentRevision": {
+     "description": "currentRevision, if not empty, indicates the version of the StatefulSet used to generate Pods in the sequence [0,currentReplicas).",
+     "type": "string"
+    },
+    "observedGeneration": {
+     "description": "observedGeneration is the most recent generation observed for this StatefulSet. It corresponds to the StatefulSet's generation, which is updated on mutation by the API Server.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "readyReplicas": {
+     "description": "readyReplicas is the number of pods created for this StatefulSet with a Ready Condition.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "replicas": {
+     "description": "replicas is the number of Pods created by the StatefulSet controller.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "updateRevision": {
+     "description": "updateRevision, if not empty, indicates the version of the StatefulSet used to generate Pods in the sequence [replicas-updatedReplicas,replicas)",
+     "type": "string"
+    },
+    "updatedReplicas": {
+     "description": "updatedReplicas is the number of Pods created by the StatefulSet controller from the StatefulSet version indicated by updateRevision.",
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "replicas"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.StatefulSetUpdateStrategy": {
+   "description": "StatefulSetUpdateStrategy indicates the strategy that the StatefulSet controller will use to perform updates. It includes any additional parameters necessary to perform the update for the indicated strategy.",
+   "properties": {
+    "rollingUpdate": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.RollingUpdateStatefulSetStrategy",
+     "description": "RollingUpdate is used to communicate parameters when Type is RollingUpdateStatefulSetStrategyType."
+    },
+    "type": {
+     "description": "Type indicates the type of the StatefulSetUpdateStrategy. Default is RollingUpdate.",
+     "type": "string"
     }
    },
    "type": "object"
@@ -1653,6 +1898,23 @@
    "type": "object",
    "x-kubernetes-map-type": "atomic"
   },
+  "io.k8s.api.core.v1.ModifyVolumeStatus": {
+   "description": "ModifyVolumeStatus represents the status object of ControllerModifyVolume operation",
+   "properties": {
+    "status": {
+     "description": "status is the status of the ControllerModifyVolume operation. It can be in any of following states:\n - Pending\n   Pending indicates that the PersistentVolumeClaim cannot be modified due to unmet requirements, such as\n   the specified VolumeAttributesClass not existing.\n - InProgress\n   InProgress indicates that the volume is being modified.\n - Infeasible\n  Infeasible indicates that the request has been rejected as invalid by the CSI driver. To\n\t  resolve the error, a valid VolumeAttributesClass needs to be specified.\nNote: New statuses can be added in the future. Consumers should check for unknown statuses and fail appropriately.",
+     "type": "string"
+    },
+    "targetVolumeAttributesClassName": {
+     "description": "targetVolumeAttributesClassName is the name of the VolumeAttributesClass the PVC currently being reconciled",
+     "type": "string"
+    }
+   },
+   "required": [
+    "status"
+   ],
+   "type": "object"
+  },
   "io.k8s.api.core.v1.NFSVolumeSource": {
    "description": "Represents an NFS mount that lasts the lifetime of a pod. NFS volumes do not support ownership management or SELinux relabeling.",
    "properties": {
@@ -1778,6 +2040,71 @@
    "type": "object",
    "x-kubernetes-map-type": "atomic"
   },
+  "io.k8s.api.core.v1.PersistentVolumeClaim": {
+   "description": "PersistentVolumeClaim is a user's request for and claim to a persistent volume",
+   "properties": {
+    "apiVersion": {
+     "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PersistentVolumeClaimSpec",
+     "description": "spec defines the desired characteristics of a volume requested by a pod author. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims"
+    },
+    "status": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PersistentVolumeClaimStatus",
+     "description": "status represents the current information/status of a persistent volume claim. Read-only. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims"
+    }
+   },
+   "type": "object",
+   "x-kubernetes-group-version-kind": [
+    {
+     "group": "",
+     "kind": "PersistentVolumeClaim",
+     "version": "v1"
+    }
+   ]
+  },
+  "io.k8s.api.core.v1.PersistentVolumeClaimCondition": {
+   "description": "PersistentVolumeClaimCondition contains details about state of pvc",
+   "properties": {
+    "lastProbeTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "lastProbeTime is the time we probed the condition."
+    },
+    "lastTransitionTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "lastTransitionTime is the time the condition transitioned from one status to another."
+    },
+    "message": {
+     "description": "message is the human-readable message indicating details about last transition.",
+     "type": "string"
+    },
+    "reason": {
+     "description": "reason is a unique, this should be a short, machine understandable string that gives the reason for condition's last transition. If it reports \"Resizing\" that means the underlying persistent volume is being resized.",
+     "type": "string"
+    },
+    "status": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "status"
+   ],
+   "type": "object"
+  },
   "io.k8s.api.core.v1.PersistentVolumeClaimSpec": {
    "description": "PersistentVolumeClaimSpec describes the common attributes of storage devices and allows a Source for provider-specific attributes",
    "properties": {
@@ -1819,6 +2146,67 @@
     },
     "volumeName": {
      "description": "volumeName is the binding reference to the PersistentVolume backing this claim.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.core.v1.PersistentVolumeClaimStatus": {
+   "description": "PersistentVolumeClaimStatus is the current status of a persistent volume claim.",
+   "properties": {
+    "accessModes": {
+     "description": "accessModes contains the actual access modes the volume backing the PVC has. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1",
+     "items": {
+      "type": "string"
+     },
+     "type": "array",
+     "x-kubernetes-list-type": "atomic"
+    },
+    "allocatedResourceStatuses": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "description": "allocatedResourceStatuses stores status of resource being resized for the given PVC. Key names follow standard Kubernetes label syntax. Valid values are either:\n\t* Un-prefixed keys:\n\t\t- storage - the capacity of the volume.\n\t* Custom resources must use implementation-defined prefixed names such as \"example.com/my-custom-resource\"\nApart from above values - keys that are unprefixed or have kubernetes.io prefix are considered reserved and hence may not be used.\n\nClaimResourceStatus can be in any of following states:\n\t- ControllerResizeInProgress:\n\t\tState set when resize controller starts resizing the volume in control-plane.\n\t- ControllerResizeFailed:\n\t\tState set when resize has failed in resize controller with a terminal error.\n\t- NodeResizePending:\n\t\tState set when resize controller has finished resizing the volume but further resizing of\n\t\tvolume is needed on the node.\n\t- NodeResizeInProgress:\n\t\tState set when kubelet starts resizing the volume.\n\t- NodeResizeFailed:\n\t\tState set when resizing has failed in kubelet with a terminal error. Transient errors don't set\n\t\tNodeResizeFailed.\nFor example: if expanding a PVC for more capacity - this field can be one of the following states:\n\t- pvc.status.allocatedResourceStatus['storage'] = \"ControllerResizeInProgress\"\n     - pvc.status.allocatedResourceStatus['storage'] = \"ControllerResizeFailed\"\n     - pvc.status.allocatedResourceStatus['storage'] = \"NodeResizePending\"\n     - pvc.status.allocatedResourceStatus['storage'] = \"NodeResizeInProgress\"\n     - pvc.status.allocatedResourceStatus['storage'] = \"NodeResizeFailed\"\nWhen this field is not set, it means that no resize operation is in progress for the given PVC.\n\nA controller that receives PVC update with previously unknown resourceName or ClaimResourceStatus should ignore the update for the purpose it was designed. For example - a controller that only is responsible for resizing capacity of the volume, should ignore PVC updates that change other valid resources associated with PVC.\n\nThis is an alpha field and requires enabling RecoverVolumeExpansionFailure feature.",
+     "type": "object",
+     "x-kubernetes-map-type": "granular"
+    },
+    "allocatedResources": {
+     "additionalProperties": {
+      "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
+     },
+     "description": "allocatedResources tracks the resources allocated to a PVC including its capacity. Key names follow standard Kubernetes label syntax. Valid values are either:\n\t* Un-prefixed keys:\n\t\t- storage - the capacity of the volume.\n\t* Custom resources must use implementation-defined prefixed names such as \"example.com/my-custom-resource\"\nApart from above values - keys that are unprefixed or have kubernetes.io prefix are considered reserved and hence may not be used.\n\nCapacity reported here may be larger than the actual capacity when a volume expansion operation is requested. For storage quota, the larger value from allocatedResources and PVC.spec.resources is used. If allocatedResources is not set, PVC.spec.resources alone is used for quota calculation. If a volume expansion capacity request is lowered, allocatedResources is only lowered if there are no expansion operations in progress and if the actual volume capacity is equal or lower than the requested capacity.\n\nA controller that receives PVC update with previously unknown resourceName should ignore the update for the purpose it was designed. For example - a controller that only is responsible for resizing capacity of the volume, should ignore PVC updates that change other valid resources associated with PVC.\n\nThis is an alpha field and requires enabling RecoverVolumeExpansionFailure feature.",
+     "type": "object"
+    },
+    "capacity": {
+     "additionalProperties": {
+      "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
+     },
+     "description": "capacity represents the actual resources of the underlying volume.",
+     "type": "object"
+    },
+    "conditions": {
+     "description": "conditions is the current Condition of persistent volume claim. If underlying persistent volume is being resized then the Condition will be set to 'Resizing'.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.core.v1.PersistentVolumeClaimCondition"
+     },
+     "type": "array",
+     "x-kubernetes-list-map-keys": [
+      "type"
+     ],
+     "x-kubernetes-list-type": "map",
+     "x-kubernetes-patch-merge-key": "type",
+     "x-kubernetes-patch-strategy": "merge"
+    },
+    "currentVolumeAttributesClassName": {
+     "description": "currentVolumeAttributesClassName is the current name of the VolumeAttributesClass the PVC is using. When unset, there is no VolumeAttributeClass applied to this PersistentVolumeClaim This is an alpha field and requires enabling VolumeAttributesClass feature.",
+     "type": "string"
+    },
+    "modifyVolumeStatus": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.ModifyVolumeStatus",
+     "description": "ModifyVolumeStatus represents the status object of ControllerModifyVolume operation. When this is unset, there is no ModifyVolume operation being attempted. This is an alpha field and requires enabling VolumeAttributesClass feature."
+    },
+    "phase": {
+     "description": "phase represents the current phase of PersistentVolumeClaim.",
      "type": "string"
     }
    },

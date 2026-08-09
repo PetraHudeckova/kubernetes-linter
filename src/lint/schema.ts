@@ -273,7 +273,7 @@ export function lintSchema(value: unknown, schema: Schema): SchemaLintResult {
 }
 
 /** "Pod and Deployment", "Pod, Deployment and Job". */
-function listKinds(kinds: string[]): string {
+export function listKinds(kinds: string[]): string {
   if (kinds.length <= 1) return kinds[0] ?? 'nothing';
   return `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`;
 }

@@ -127,7 +127,7 @@ function toDiagnostic(view: EditorView, finding: LocatedFinding): Diagnostic {
  * Kubernetes OpenAPI spec, which ships with the schema bundle. The schema is
  * read per hover rather than captured, so switching version updates the text.
  * The path is resolved against the kind its own document declares, so a
- * manifest holding both a Pod and a Deployment explains each correctly.
+ * manifest holding a Pod and a Deployment explains each correctly.
  */
 const createFieldTooltip = (getSchema: () => Schema) =>
   hoverTooltip((view, pos) => {
