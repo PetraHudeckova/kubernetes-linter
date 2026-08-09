@@ -96,7 +96,7 @@ Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must b
 `ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
 wrong node on a Deployment and silently close the gate on every version.
 
-### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress, IngressClass)
+### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Job, Service, Ingress, IngressClass)
 
 The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
 reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
@@ -129,10 +129,10 @@ is not reported as undeclared.
 `ctx.meta(...)` prefixes `podTemplate.metadataPath`, and `ctx.field(...)` renders a dotted name
 for a message. There are no `['spec', …]` literals left in the PodSpec rules; reintroducing one
 silently breaks Deployment. The deliberate exceptions are `rules/deployment.ts`,
-`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts`, `rules/ingress.ts` and
-`rules/ingressclass.ts`, which address `spec.selector`, `spec.strategy`, `spec.updateStrategy`,
-`spec.ports`, `spec.rules`, `spec.controller` and the like — fields of the object itself, not of
-any pod spec.
+`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/job.ts`, `rules/service.ts`,
+`rules/ingress.ts` and `rules/ingressclass.ts`, which address `spec.selector`, `spec.strategy`,
+`spec.updateStrategy`, `spec.completionMode`, `spec.ports`, `spec.rules`, `spec.controller` and
+the like — fields of the object itself, not of any pod spec.
 
 `ctx.doc` is the document root (used by `metadata.ts`, `enums.ts` and every per-kind module);
 `ctx.spec` is the PodSpec wherever this kind keeps it, and `{}` for a kind with no pod
@@ -140,19 +140,36 @@ template. `ContainerRef.path` already carries the prefix, so any rule built on `
 is kind-correct for free.
 
 Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
-and `deployment/*` / `statefulset/*` / `daemonset/*` / `service/*` / `ingress/*` /
+and `deployment/*` / `statefulset/*` / `daemonset/*` / `job/*` / `service/*` / `ingress/*` /
 `ingressclass/*` for checks on the object itself. The two document-level rules are named for what they check rather than for a kind,
 since they run for every kind including one with no Pod: `meta/*` in `metadata.ts` and
 `enum/*` in `enums.ts`. `Schema` is per version and holds every root; `Schema.for(kind)`
 returns the `KindSchema` view that both lint layers actually use.
 
 Each kind keeps its **own** rule module rather than sharing one: `deployment.ts`,
-`statefulset.ts` and `daemonset.ts` overlap on the selector and template checks, but the three
-upstream validators are separate, diverge in wording and in what they forbid, and are versioned
-independently — so they are kept independent here too, and a change to one is not a change to
-the others. The rollout checks are where that pays off: a Deployment rejects `maxSurge` and
-`maxUnavailable` both at zero, a DaemonSet rejects that *and* the two both non-zero (it either
-drains a node or surges onto it, never both), and a StatefulSet has no `maxSurge` at all.
+`statefulset.ts`, `daemonset.ts` and `job.ts` overlap on the selector and template checks, but
+the four upstream validators are separate, diverge in wording and in what they forbid, and are
+versioned independently — so they are kept independent here too, and a change to one is not a
+change to the others. The rollout checks are where that pays off: a Deployment rejects
+`maxSurge` and `maxUnavailable` both at zero, a DaemonSet rejects that *and* the two both
+non-zero (it either drains a node or surges onto it, never both), a StatefulSet has no
+`maxSurge` at all, and a Job has no rollout to speak of.
+
+`job.ts` is where the shared template checks invert. The other three require
+`restartPolicy: Always`; a Job forbids it, and since the PodSpec default *is* `Always` and is
+applied before validation runs, **an absent `restartPolicy` is an error on a Job** — the one
+place a missing field is reported rather than read as the default. Its selector inverts too:
+the apiserver generates one from the Job's UID, so writing one at all is rejected unless
+`manualSelector: true` says the Pods are being adopted rather than created. Everything else
+turns on the effective `completionMode`, resolved the way `service.ts` resolves `spec.type`
+(defaulting to `NonIndexed`, `undefined` for a value the API does not know), because only an
+Indexed Job has indexes for `backoffLimitPerIndex`, `maxFailedIndexes` and `successPolicy` to
+address. The version gates are dense here — the per-index fields and `podReplacementPolicy`
+arrived in 1.28, `managedBy` and `successPolicy` in 1.30 — so every one of those reads
+`ctx.supports(['spec', field])` first. Deliberately skipped are the size caps that only bound
+how long `.status` can grow (20 policy rules, 255 exit codes, 100000 completions); the module
+comment says so, and `maxFailedIndexes` against `completions` is kept because that pair is a
+contradiction rather than a limit.
 
 `service.ts` is the odd one out and shows what a kind without a pod template costs: almost
 everything it checks turns on `spec.type`, which decides whether a `nodePort`, a
@@ -212,13 +229,13 @@ The reusable machinery — the schema walk, `walkFields`,
 ### Schema bundles
 
 `scripts/generate-schema.mjs` unions the transitive `$ref` closure of every root in `ROOTS`
-(185 defs at 1.36, ~330 KB on disk, ~49 KB brotli) and writes `{ k8sVersion, source, generatedAt,
+(196 defs at 1.36, ~355 KB on disk, ~54 KB brotli) and writes `{ k8sVersion, source, generatedAt,
 roots, definitions }`. One file per version rather than one per kind: the Deployment closure is
 a near-total superset of Pod's, the StatefulSet one adds little beyond `PersistentVolumeClaim`,
-and the DaemonSet one adds only its own spec and update strategy, so per-kind files would be
-near-duplicates. Service, Ingress and IngressClass are the roots that share nothing below
-`ObjectMeta`, and the first two still add only about a dozen definitions each while
-IngressClass adds two. API descriptions are kept on purpose — they are what the hover tooltip and
+the DaemonSet one adds only its own spec and update strategy, and the Job one only its spec and
+the two policies hanging off it, so per-kind files would be near-duplicates. Service, Ingress
+and IngressClass are the roots that share nothing below `ObjectMeta`, and the first two still
+add only about a dozen definitions each while IngressClass adds two. API descriptions are kept on purpose — they are what the hover tooltip and
 most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,
@@ -234,8 +251,8 @@ them property-by-property would produce nonsense.
   narrow with `asString`/`asNumber`/`asObject`/`asArray` from `rules/context.ts` and skip
   wrong-shaped values silently.
 - Rule IDs are `pod/<thing>` for PodSpec checks and `deployment/<thing>` / `statefulset/<thing>`
-  / `daemonset/<thing>` / `service/<thing>` / `ingress/<thing>` / `ingressclass/<thing>` for
-  checks on the object itself; the rules that run
+  / `daemonset/<thing>` / `job/<thing>` / `service/<thing>` / `ingress/<thing>` /
+  `ingressclass/<thing>` for checks on the object itself; the rules that run
   for every kind are `meta/<thing>` and `enum/<thing>`; schema-layer IDs are `schema/<thing>`;
   parser IDs are `yaml/<thing>`.
 - Findings explain *why*, usually by quoting the field's own API description and pulling its

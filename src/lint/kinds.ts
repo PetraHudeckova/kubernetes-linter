@@ -4,6 +4,7 @@ import { daemonSetRule } from './rules/daemonset.js';
 import { deploymentRule } from './rules/deployment.js';
 import { ingressRule } from './rules/ingress.js';
 import { ingressClassRule } from './rules/ingressclass.js';
+import { jobRule } from './rules/job.js';
 import { serviceRule } from './rules/service.js';
 import { statefulSetRule } from './rules/statefulset.js';
 
@@ -86,6 +87,11 @@ export const KINDS: Record<string, KindDescriptor> = {
     kind: 'DaemonSet',
     podTemplate: POD_TEMPLATE,
     rules: [daemonSetRule],
+  },
+  Job: {
+    kind: 'Job',
+    podTemplate: POD_TEMPLATE,
+    rules: [jobRule],
   },
   Service: {
     kind: 'Service',

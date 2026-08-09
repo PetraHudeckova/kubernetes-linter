@@ -104,6 +104,21 @@ const ENUMS: Record<string, EnumSpec> = {
     note: 'Defaults to RollingUpdate.',
   },
 
+  'JobSpec.completionMode': {
+    values: ['NonIndexed', 'Indexed'],
+    note: 'Defaults to NonIndexed, where the Pods are interchangeable. "Indexed" gives each Pod a fixed index in 0..completions-1, which it reads from the JOB_COMPLETION_INDEX annotation and carries in its hostname.',
+  },
+  'JobSpec.podReplacementPolicy': {
+    values: ['TerminatingOrFailed', 'Failed'],
+    note: 'Defaults to TerminatingOrFailed, which starts the replacement as soon as the old Pod begins terminating; "Failed" waits until it is gone.',
+  },
+  'PodFailurePolicyRule.action': {
+    values: ['FailJob', 'FailIndex', 'Ignore', 'Count'],
+    note: '"Count" is the default behaviour written out: the failure counts against backoffLimit. "Ignore" does not count it at all, and "FailIndex" needs backoffLimitPerIndex.',
+  },
+  'PodFailurePolicyOnExitCodesRequirement.operator': { values: ['In', 'NotIn'] },
+  'PodFailurePolicyOnPodConditionsPattern.status': { values: ['True', 'False', 'Unknown'] },
+
   'ServiceSpec.type': {
     values: ['ClusterIP', 'NodePort', 'LoadBalancer', 'ExternalName'],
     note: 'Defaults to ClusterIP. Each type but ExternalName builds on the one before it: a NodePort Service also has a cluster IP, and a LoadBalancer Service also has a node port.',
@@ -162,6 +177,7 @@ const ENUMS: Record<string, EnumSpec> = {
   'DeploymentCondition.status': { values: ['True', 'False', 'Unknown'] },
   'DaemonSetCondition.status': { values: ['True', 'False', 'Unknown'] },
   'StatefulSetCondition.status': { values: ['True', 'False', 'Unknown'] },
+  'JobCondition.status': { values: ['True', 'False', 'Unknown'] },
   'PersistentVolumeClaimStatus.phase': { values: ['Pending', 'Bound', 'Lost'] },
   'PersistentVolumeClaimCondition.status': { values: ['True', 'False', 'Unknown'] },
   'PortStatus.protocol': { values: ['TCP', 'UDP', 'SCTP'] },

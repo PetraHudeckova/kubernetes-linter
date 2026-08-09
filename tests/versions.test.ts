@@ -12,6 +12,7 @@ import {
   VALID_DEPLOYMENT,
   VALID_INGRESS,
   VALID_INGRESS_CLASS,
+  VALID_JOB,
   VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSetWithPodSpec,
@@ -19,6 +20,8 @@ import {
   ingressClassParameters,
   ingressPath,
   ingressWithPaths,
+  job,
+  jobWithPodSpec,
   pod,
   podWithContainer,
   service,
@@ -74,6 +77,7 @@ describe('bundled versions', () => {
         'Deployment',
         'StatefulSet',
         'DaemonSet',
+        'Job',
         'Service',
         'Ingress',
         'IngressClass',
@@ -81,6 +85,7 @@ describe('bundled versions', () => {
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('DaemonSet')?.apiVersion, version).toBe('apps/v1');
+      expect(schema.for('Job')?.apiVersion, version).toBe('batch/v1');
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
       expect(schema.for('Service')?.apiVersion, version).toBe('v1');
       expect(schema.for('Ingress')?.apiVersion, version).toBe('networking.k8s.io/v1');
@@ -110,6 +115,16 @@ describe('bundled versions', () => {
     // The fourth root, and the tripwire for the closure it adds.
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_DAEMONSET, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('lints a valid Job cleanly on every version', async () => {
+    // The fifth root, and the only one in the batch group — it reaches PodSpec
+    // through the same PodTemplateSpec the apps kinds do, but its own spec and
+    // the two policies hanging off it are its alone.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_JOB, await schemaFor(version));
       expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
     }
   });
@@ -191,6 +206,54 @@ describe('bundled versions', () => {
     const yaml = statefulSetWithPodSpec('      hostnameOverride: Not_A_Name\n');
     expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
     expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
+  });
+
+  it('applies version-gated pod spec rules under a Job template', async () => {
+    const yaml = jobWithPodSpec('      hostnameOverride: Not_A_Name\n');
+    expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
+    expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
+  });
+});
+
+describe('Job fields that came and went', () => {
+  it('accepts the per-index fields from 1.28', async () => {
+    const yaml = job('  completionMode: Indexed\n  completions: 4\n  backoffLimitPerIndex: 1\n');
+
+    expect(await ruleIdsAt('1.27', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.28', yaml)).toEqual([]);
+  });
+
+  it('does not double-report a per-index rule on a version without the field', async () => {
+    // backoffLimitPerIndex needs Indexed completion, but on 1.27 the field does
+    // not exist at all and only the schema layer should speak.
+    const yaml = job('  backoffLimitPerIndex: 1\n');
+
+    expect(await ruleIdsAt('1.27', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.28', yaml)).toEqual(['job/requires-indexed-completion']);
+  });
+
+  it('accepts successPolicy and managedBy from 1.30', async () => {
+    const yaml = job(
+      '  completionMode: Indexed\n  completions: 4\n  managedBy: kueue.x-k8s.io/multikueue\n' +
+        '  successPolicy:\n    rules:\n      - succeededIndexes: "0-2"\n',
+    );
+
+    expect(await ruleIdsAt('1.29', yaml)).toEqual(['schema/unknown-field', 'schema/unknown-field']);
+    expect(await ruleIdsAt('1.30', yaml)).toEqual([]);
+  });
+
+  it('requires a pod condition status up to 1.34 in the schema and in the rule after', async () => {
+    // 1.35 dropped `status` from the required list in the OpenAPI definition,
+    // but validation still rejects a pattern without one — so the report has to
+    // move from layer 1 to the rule module rather than disappear.
+    const yaml = job(
+      '  podFailurePolicy:\n    rules:\n      - action: Ignore\n' +
+        '        onPodConditions:\n          - type: DisruptionTarget\n',
+    );
+
+    expect(await ruleIdsAt('1.34', yaml)).toEqual(['schema/required-field']);
+    expect(await ruleIdsAt('1.35', yaml)).toEqual(['job/missing-pod-condition-status']);
+    expect(await ruleIdsAt('1.36', yaml)).toEqual(['job/missing-pod-condition-status']);
   });
 });
 

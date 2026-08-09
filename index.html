@@ -6,7 +6,7 @@
     <title>Kubernetes Manifest Linter</title>
     <meta
       name="description"
-      content="Lint Kubernetes Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress and IngressClass manifests in your browser. Explains what is wrong and offers a fix. Nothing is uploaded."
+      content="Lint Kubernetes Pod, Deployment, StatefulSet, DaemonSet, Job, Service, Ingress and IngressClass manifests in your browser. Explains what is wrong and offers a fix. Nothing is uploaded."
     />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%98%B8%3C/text%3E%3C/svg%3E" />
   </head>
@@ -18,7 +18,7 @@
         <select id="version" class="pill pill-select"></select>
       </div>
       <p class="masthead-blurb">
-        Paste a Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress or IngressClass manifest. Everything runs in this tab — nothing is uploaded.
+        Paste a Pod, Deployment, StatefulSet, DaemonSet, Job, Service, Ingress or IngressClass manifest. Everything runs in this tab — nothing is uploaded.
       </p>
       <a class="masthead-link" href="https://github.com/PetraHudeckova/kubernetes-linter">Source ↗</a>
     </header>
@@ -51,7 +51,7 @@
 
     <footer class="footer">
       <p>
-        Checks the Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress and IngressClass schemas from the Kubernetes OpenAPI specification for the version you
+        Checks the Pod, Deployment, StatefulSet, DaemonSet, Job, Service, Ingress and IngressClass schemas from the Kubernetes OpenAPI specification for the version you
         select above, plus the validation rules the apiserver applies on top of it. Hover any
         field to see what it does.
       </p>
