@@ -302,4 +302,53 @@ spec:
       port: 80
 `,
   },
+  {
+    id: 'ingress',
+    label: 'An Ingress with problems',
+    blurb:
+      'A class set two ways at once, a host that is an IP, a relative path, a backend port named twice and a certificate for a host nothing routes.',
+    yaml: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shop
+  annotations:
+    # IngressClass replaced this in 1.18, and it disagrees with the field below.
+    kubernetes.io/ingress.class: nginx
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - checkout.example.com
+      secretName: shop-tls
+  rules:
+    - host: shop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: prefix
+            backend:
+              service:
+                name: shop-web
+                port:
+                  # A backend picks a Service port by name or by number, not both.
+                  name: http
+                  number: 80
+          - path: api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: shop-api
+    # An Ingress routes by the Host header, so a rule names a host, not an address.
+    - host: 203.0.113.10
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: shop-web
+                port:
+                  number: 80
+`,
+  },
 ];

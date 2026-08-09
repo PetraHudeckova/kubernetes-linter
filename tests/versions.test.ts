@@ -10,10 +10,13 @@ import { EXAMPLES } from '../src/ui/examples.js';
 import {
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
+  VALID_INGRESS,
   VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSetWithPodSpec,
   deploymentWithPodSpec,
+  ingressPath,
+  ingressWithPaths,
   pod,
   podWithContainer,
   service,
@@ -70,12 +73,14 @@ describe('bundled versions', () => {
         'StatefulSet',
         'DaemonSet',
         'Service',
+        'Ingress',
       ]);
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('DaemonSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
       expect(schema.for('Service')?.apiVersion, version).toBe('v1');
+      expect(schema.for('Ingress')?.apiVersion, version).toBe('networking.k8s.io/v1');
     }
   });
 
@@ -111,6 +116,25 @@ describe('bundled versions', () => {
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_SERVICE, await schemaFor(version));
       expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('lints a valid Ingress cleanly on every version', async () => {
+    // The sixth root, and the only one outside the core and apps groups — a
+    // regeneration that dropped the networking closure would show up here.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_INGRESS, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('checks an Ingress the same way on every version', async () => {
+    // networking/v1 Ingress has been served unchanged since 1.19, so nothing in
+    // its rule module is version-gated and the same manifest has to produce the
+    // same findings across the whole range.
+    const yaml = ingressWithPaths(ingressPath('/a', 'Exact') + ingressPath('/a', 'Exact'));
+    for (const version of AVAILABLE_VERSIONS) {
+      expect(await ruleIdsAt(version, yaml), version).toEqual(['ingress/duplicate-path']);
     }
   });
 

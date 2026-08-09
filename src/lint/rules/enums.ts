@@ -127,6 +127,11 @@ const ENUMS: Record<string, EnumSpec> = {
   },
   'ServicePort.protocol': { values: ['TCP', 'UDP', 'SCTP'], note: 'Defaults to TCP.' },
 
+  'HTTPIngressPath.pathType': {
+    values: ['Exact', 'Prefix', 'ImplementationSpecific'],
+    note: 'There is no default: an Ingress path must say how it is matched. "Prefix" splits both the request path and the rule path on "/" and compares them element by element, so it matches whole path segments rather than a string prefix.',
+  },
+
   'StatefulSetSpec.podManagementPolicy': {
     values: ['OrderedReady', 'Parallel'],
     note: 'Defaults to OrderedReady, which starts and replaces Pods one at a time, in ordinal order.',
@@ -155,6 +160,7 @@ const ENUMS: Record<string, EnumSpec> = {
   'PersistentVolumeClaimStatus.phase': { values: ['Pending', 'Bound', 'Lost'] },
   'PersistentVolumeClaimCondition.status': { values: ['True', 'False', 'Unknown'] },
   'PortStatus.protocol': { values: ['TCP', 'UDP', 'SCTP'] },
+  'IngressPortStatus.protocol': { values: ['TCP', 'UDP', 'SCTP'] },
   // meta/v1 Condition, which a ServiceStatus carries.
   'Condition.status': { values: ['True', 'False', 'Unknown'] },
 };
