@@ -59,18 +59,51 @@ export const jobRule: Rule = {
     const spec = asObject(ctx.doc['spec']);
     if (!spec) return;
 
-    const mode = completionMode(spec);
-
+    // A hand-written Job carries its own selector; the checks that concern it
+    // are Job-only, since a CronJob's jobTemplate may not have one at all
+    // (cronjob.ts reports that directly).
     checkSelector(ctx, spec);
-    checkTemplate(ctx, spec);
-    checkCounters(ctx, spec);
-    checkCompletionMode(ctx, spec, mode);
-    checkPodFailurePolicy(ctx, spec);
-    checkPodReplacementPolicy(ctx, spec);
-    checkSuccessPolicy(ctx, spec, mode);
-    checkManagedBy(ctx, spec);
+    const mode = checkJobSpec(ctx, spec, ['spec']);
+
+    // The hostname a completion's Pod gets depends on *this* object's name,
+    // which is only meaningful for a Job — a CronJob's Job name is generated
+    // by its controller, not written in the manifest, so there is nothing to
+    // check up front there.
+    if (mode === INDEXED) checkIndexedPodHostname(ctx, asNumber(spec['completions']));
   },
 };
+
+/**
+ * The checks `validateJobSpec` runs on a JobSpec, wherever one is embedded —
+ * at a Job's own `spec`, or nested under a CronJob's `spec.jobTemplate.spec`.
+ * Upstream calls the same function in both places, so this does too, rather
+ * than duplicating ~500 lines under `cronjob/*` rule IDs: every finding here
+ * keeps its `job/*` id and fires at `base`, exactly as the shared PodSpec
+ * rules keep their `pod/*` ids wherever the PodSpec itself lives.
+ *
+ * `checkSelector` and `checkIndexedPodHostname` are deliberately not part of
+ * this: both are in `ValidateJob` upstream, not `validateJobSpec`, and both
+ * read the *object's* name/selector rather than anything inside the JobSpec —
+ * meaningless for a CronJob's generated Job. Returns the effective completion
+ * mode, since the Job-only hostname check above needs it too.
+ */
+export function checkJobSpec(
+  ctx: RuleContext,
+  spec: Record<string, unknown>,
+  base: Path,
+): string | undefined {
+  const mode = completionMode(spec);
+
+  checkTemplate(ctx, spec);
+  checkCounters(ctx, spec, base);
+  checkCompletionMode(ctx, spec, mode, base);
+  checkPodFailurePolicy(ctx, spec, base);
+  checkPodReplacementPolicy(ctx, spec, base);
+  checkSuccessPolicy(ctx, spec, mode, base);
+  checkManagedBy(ctx, spec, base);
+
+  return mode;
+}
 
 /**
  * The mode the controller will actually use, or `undefined` when the manifest
@@ -303,7 +336,7 @@ function checkRestartPolicy(ctx: RuleContext, spec: Record<string, unknown>): vo
 
 /* Numeric fields */
 
-function checkCounters(ctx: RuleContext, spec: Record<string, unknown>): void {
+function checkCounters(ctx: RuleContext, spec: Record<string, unknown>, base: Path): void {
   const nonNegative = [
     ['parallelism', 'job/negative-parallelism', 'how many Pods may run at the same time'],
     [
@@ -341,13 +374,13 @@ function checkCounters(ctx: RuleContext, spec: Record<string, unknown>): void {
   for (const [field, ruleId, meaning] of nonNegative) {
     // The last two arrived in 1.28; on an older target the schema layer has
     // already reported them as unknown.
-    if (!ctx.supports(['spec', field])) continue;
+    if (!ctx.supports([...base, field])) continue;
     const value = asNumber(spec[field]);
     if (value === undefined || value >= 0) continue;
     ctx.report({
       ruleId,
       severity: 'error',
-      path: ['spec', field],
+      path: [...base, field],
       message: `${field} must not be negative, but is ${value}.`,
       explanation: `It is ${meaning}.`,
       docsUrl: JOB_DOCS,
@@ -368,6 +401,7 @@ function checkCompletionMode(
   ctx: RuleContext,
   spec: Record<string, unknown>,
   mode: string | undefined,
+  base: Path,
 ): void {
   if (mode === undefined) return;
 
@@ -379,7 +413,7 @@ function checkCompletionMode(
       ctx.report({
         ruleId: 'job/indexed-without-completions',
         severity: 'error',
-        path: ['spec'],
+        path: base,
         anchor: 'key',
         message: 'An Indexed Job must say how many completions it has.',
         explanation:
@@ -392,32 +426,30 @@ function checkCompletionMode(
       ctx.report({
         ruleId: 'job/max-failed-indexes-over-completions',
         severity: 'error',
-        path: ['spec', 'maxFailedIndexes'],
+        path: [...base, 'maxFailedIndexes'],
         message: `maxFailedIndexes (${maxFailedIndexes}) must not exceed completions (${completions}).`,
         explanation:
           'There are only as many indexes as there are completions, so a threshold above that count could never be reached and the Job would run to the end of its backoff budget instead.',
         docsUrl: INDEXED_DOCS,
       });
     }
-
-    checkIndexedPodHostname(ctx, completions);
   } else {
     for (const field of ['backoffLimitPerIndex', 'maxFailedIndexes'] as const) {
-      if (spec[field] === undefined || !ctx.supports(['spec', field])) continue;
-      reportRequiresIndexed(ctx, ['spec', field], field);
+      if (spec[field] === undefined || !ctx.supports([...base, field])) continue;
+      reportRequiresIndexed(ctx, [...base, field], field, base);
     }
   }
 
   if (
     maxFailedIndexes !== undefined &&
     spec['backoffLimitPerIndex'] === undefined &&
-    ctx.supports(['spec', 'maxFailedIndexes']) &&
-    ctx.supports(['spec', 'backoffLimitPerIndex'])
+    ctx.supports([...base, 'maxFailedIndexes']) &&
+    ctx.supports([...base, 'backoffLimitPerIndex'])
   ) {
     ctx.report({
       ruleId: 'job/max-failed-indexes-without-backoff-limit-per-index',
       severity: 'error',
-      path: ['spec', 'maxFailedIndexes'],
+      path: [...base, 'maxFailedIndexes'],
       message: 'maxFailedIndexes needs backoffLimitPerIndex beside it.',
       explanation:
         'An index only counts as failed once it has exhausted its own retry budget, and backoffLimitPerIndex is that budget. Without it the Job retries as a whole against backoffLimit and no index ever reaches the state maxFailedIndexes counts.',
@@ -427,7 +459,7 @@ function checkCompletionMode(
 }
 
 /** One report for every field that only means something in Indexed mode. */
-function reportRequiresIndexed(ctx: RuleContext, path: Path, field: string): void {
+function reportRequiresIndexed(ctx: RuleContext, path: Path, field: string, base: Path): void {
   ctx.report({
     ruleId: 'job/requires-indexed-completion',
     severity: 'error',
@@ -440,7 +472,7 @@ function reportRequiresIndexed(ctx: RuleContext, path: Path, field: string): voi
     fix: {
       title: 'Set completionMode: Indexed',
       safe: false,
-      ops: [{ op: 'set', path: ['spec', 'completionMode'], value: INDEXED }],
+      ops: [{ op: 'set', path: [...base, 'completionMode'], value: INDEXED }],
     },
   });
 }
@@ -481,7 +513,7 @@ function checkIndexedPodHostname(ctx: RuleContext, completions: number | undefin
  * Job. Each rule matches on exactly one of the two things it can look at: the
  * exit code of a container, or a condition on the Pod.
  */
-function checkPodFailurePolicy(ctx: RuleContext, spec: Record<string, unknown>): void {
+function checkPodFailurePolicy(ctx: RuleContext, spec: Record<string, unknown>, base: Path): void {
   const policy = asObject(spec['podFailurePolicy']);
   const rules = asArray(policy?.['rules']);
   if (!rules) return;
@@ -498,7 +530,7 @@ function checkPodFailurePolicy(ctx: RuleContext, spec: Record<string, unknown>):
   rules.forEach((entry, index) => {
     const rule = asObject(entry);
     if (!rule) return;
-    const path: Path = ['spec', 'podFailurePolicy', 'rules', index];
+    const path: Path = [...base, 'podFailurePolicy', 'rules', index];
 
     const hasExitCodes = rule['onExitCodes'] !== undefined;
     const conditions = asArray(rule['onPodConditions']) ?? [];
@@ -530,13 +562,13 @@ function checkPodFailurePolicy(ctx: RuleContext, spec: Record<string, unknown>):
     if (
       asString(rule['action']) === 'FailIndex' &&
       spec['backoffLimitPerIndex'] === undefined &&
-      ctx.supports(['spec', 'backoffLimitPerIndex'])
+      ctx.supports([...base, 'backoffLimitPerIndex'])
     ) {
       ctx.report({
         ruleId: 'job/fail-index-without-backoff-limit-per-index',
         severity: 'error',
         path: [...path, 'action'],
-        message: 'Action "FailIndex" requires spec.backoffLimitPerIndex.',
+        message: `Action "FailIndex" requires ${[...base, 'backoffLimitPerIndex'].join('.')}.`,
         explanation:
           'FailIndex marks the failed Pod\'s index as failed without retrying it, which only means something in a Job that tracks failures per index. Setting backoffLimitPerIndex is what turns that tracking on.',
         docsUrl: INDEXED_DOCS,
@@ -704,8 +736,8 @@ function checkOnPodConditions(ctx: RuleContext, conditions: unknown[], path: Pat
  * the terminated Pod's exit code before it can decide anything, so the two
  * together leave only one of the values available.
  */
-function checkPodReplacementPolicy(ctx: RuleContext, spec: Record<string, unknown>): void {
-  if (!ctx.supports(['spec', 'podReplacementPolicy'])) return;
+function checkPodReplacementPolicy(ctx: RuleContext, spec: Record<string, unknown>, base: Path): void {
+  if (!ctx.supports([...base, 'podReplacementPolicy'])) return;
   const policy = asString(spec['podReplacementPolicy']);
   // An unrecognised value is the enum table's report.
   if (policy !== 'TerminatingOrFailed') return;
@@ -714,7 +746,7 @@ function checkPodReplacementPolicy(ctx: RuleContext, spec: Record<string, unknow
   ctx.report({
     ruleId: 'job/pod-replacement-policy-with-failure-policy',
     severity: 'error',
-    path: ['spec', 'podReplacementPolicy'],
+    path: [...base, 'podReplacementPolicy'],
     message: 'podReplacementPolicy must be "Failed" when a podFailurePolicy is set.',
     explanation:
       'A pod failure policy reads the exit code of the terminated Pod, which is not known until the Pod has actually finished terminating. "TerminatingOrFailed" would start the replacement before then, so the apiserver allows only "Failed" here.',
@@ -722,7 +754,7 @@ function checkPodReplacementPolicy(ctx: RuleContext, spec: Record<string, unknow
     fix: {
       title: 'Change to Failed',
       safe: false,
-      ops: [{ op: 'set', path: ['spec', 'podReplacementPolicy'], value: 'Failed' }],
+      ops: [{ op: 'set', path: [...base, 'podReplacementPolicy'], value: 'Failed' }],
     },
   });
 }
@@ -738,13 +770,16 @@ function checkSuccessPolicy(
   ctx: RuleContext,
   spec: Record<string, unknown>,
   mode: string | undefined,
+  base: Path,
 ): void {
-  if (!ctx.supports(['spec', 'successPolicy'])) return;
+  if (!ctx.supports([...base, 'successPolicy'])) return;
   const policy = asObject(spec['successPolicy']);
   if (!policy) return;
 
   if (mode !== INDEXED) {
-    if (mode === NON_INDEXED) reportRequiresIndexed(ctx, ['spec', 'successPolicy'], 'successPolicy');
+    if (mode === NON_INDEXED) {
+      reportRequiresIndexed(ctx, [...base, 'successPolicy'], 'successPolicy', base);
+    }
     return;
   }
 
@@ -755,7 +790,7 @@ function checkSuccessPolicy(
     ctx.report({
       ruleId: 'job/empty-success-policy',
       severity: 'error',
-      path: ['spec', 'successPolicy', 'rules'],
+      path: [...base, 'successPolicy', 'rules'],
       message: 'A success policy must have at least one rule.',
       explanation:
         'The rules are the policy: without one the Job has no early success criterion and behaves as though the field were absent, so the apiserver rejects it rather than accept a policy that says nothing.',
@@ -769,7 +804,7 @@ function checkSuccessPolicy(
   rules.forEach((entry, index) => {
     const rule = asObject(entry);
     if (!rule) return;
-    const path: Path = ['spec', 'successPolicy', 'rules', index];
+    const path: Path = [...base, 'successPolicy', 'rules', index];
 
     if (rule['succeededCount'] === undefined && rule['succeededIndexes'] === undefined) {
       ctx.report({
@@ -908,12 +943,12 @@ function parseIndex(text: string | undefined): number | undefined {
  * built-in controller from touching the Job at all, which is why a typo here is
  * a Job that nothing ever runs.
  */
-function checkManagedBy(ctx: RuleContext, spec: Record<string, unknown>): void {
-  if (!ctx.supports(['spec', 'managedBy'])) return;
+function checkManagedBy(ctx: RuleContext, spec: Record<string, unknown>, base: Path): void {
+  if (!ctx.supports([...base, 'managedBy'])) return;
   const managedBy = asString(spec['managedBy']);
   if (managedBy === undefined) return;
 
-  const path: Path = ['spec', 'managedBy'];
+  const path: Path = [...base, 'managedBy'];
 
   if (managedBy.length > MANAGED_BY_MAX) {
     ctx.report({

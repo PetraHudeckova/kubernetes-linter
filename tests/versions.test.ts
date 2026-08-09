@@ -8,6 +8,7 @@ import {
 } from '../src/lint/index.js';
 import { EXAMPLES } from '../src/ui/examples.js';
 import {
+  VALID_CRONJOB,
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
   VALID_INGRESS,
@@ -15,6 +16,7 @@ import {
   VALID_JOB,
   VALID_SERVICE,
   VALID_STATEFULSET,
+  cronJobWithPodSpec,
   daemonSetWithPodSpec,
   deploymentWithPodSpec,
   ingressClassParameters,
@@ -78,6 +80,7 @@ describe('bundled versions', () => {
         'StatefulSet',
         'DaemonSet',
         'Job',
+        'CronJob',
         'Service',
         'Ingress',
         'IngressClass',
@@ -86,6 +89,7 @@ describe('bundled versions', () => {
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('DaemonSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('Job')?.apiVersion, version).toBe('batch/v1');
+      expect(schema.for('CronJob')?.apiVersion, version).toBe('batch/v1');
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
       expect(schema.for('Service')?.apiVersion, version).toBe('v1');
       expect(schema.for('Ingress')?.apiVersion, version).toBe('networking.k8s.io/v1');
@@ -129,8 +133,19 @@ describe('bundled versions', () => {
     }
   });
 
+  it('lints a valid CronJob cleanly on every version', async () => {
+    // The sixth root, nested one level deeper than the other five: its
+    // JobTemplateSpec wraps the same JobSpec the Job root already reaches, so
+    // this is the tripwire for CronJob, CronJobSpec, CronJobStatus and
+    // JobTemplateSpec specifically.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_CRONJOB, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
   it('lints a valid Service cleanly on every version', async () => {
-    // The fifth root, and the only one that shares nothing with the pod
+    // The seventh root, and the only one that shares nothing with the pod
     // closure — a truncated Service bundle would show up here alone.
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_SERVICE, await schemaFor(version));
@@ -139,7 +154,7 @@ describe('bundled versions', () => {
   });
 
   it('lints a valid Ingress cleanly on every version', async () => {
-    // The sixth root, and the only one outside the core and apps groups — a
+    // The eighth root, and the only one outside the core and apps groups — a
     // regeneration that dropped the networking closure would show up here.
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_INGRESS, await schemaFor(version));
@@ -148,7 +163,7 @@ describe('bundled versions', () => {
   });
 
   it('lints a valid IngressClass cleanly on every version', async () => {
-    // The seventh root. It reaches only two definitions of its own, so a
+    // The ninth root. It reaches only two definitions of its own, so a
     // regeneration that dropped them would be invisible everywhere but here.
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_INGRESS_CLASS, await schemaFor(version));
@@ -210,6 +225,15 @@ describe('bundled versions', () => {
 
   it('applies version-gated pod spec rules under a Job template', async () => {
     const yaml = jobWithPodSpec('      hostnameOverride: Not_A_Name\n');
+    expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
+    expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
+  });
+
+  it('applies version-gated pod spec rules under a CronJob template', async () => {
+    // The sharpest test that the gate resolves through the deepest spec path
+    // in the bundle: spec.jobTemplate.spec.template.spec, four segments below
+    // the document root rather than the usual one or two.
+    const yaml = cronJobWithPodSpec('          hostnameOverride: Not_A_Name\n');
     expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
     expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
   });

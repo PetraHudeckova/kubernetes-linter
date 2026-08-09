@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  VALID_CRONJOB,
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
   VALID_INGRESS,
@@ -7,6 +8,8 @@ import {
   VALID_JOB,
   VALID_SERVICE,
   VALID_STATEFULSET,
+  cronJob,
+  cronJobWithPodSpec,
   daemonSet,
   daemonSetWithPodSpec,
   deployment,
@@ -1781,6 +1784,330 @@ describe('job', () => {
 
     it('rejects one that is too long', () => {
       expectRule(job(`  managedBy: example.com/${'a'.repeat(60)}\n`), 'job/managed-by-too-long');
+    });
+  });
+});
+
+describe('cronjob', () => {
+  it('accepts a minimal CronJob', () => {
+    expectRules(VALID_CRONJOB, []);
+  });
+
+  describe('schedule', () => {
+    it('leaves an absent schedule to the schema layer', () => {
+      expectRules(VALID_CRONJOB.replace('  schedule: "0 0 * * *"\n', ''), [
+        'schema/required-field',
+      ]);
+    });
+
+    it('leaves a null schedule to the schema layer', () => {
+      expectRules(VALID_CRONJOB.replace('schedule: "0 0 * * *"', 'schedule:'), [
+        'schema/required-field',
+      ]);
+    });
+
+    it('rejects an empty schedule, which the schema layer reads as present', () => {
+      const finding = expectRule(VALID_CRONJOB.replace('"0 0 * * *"', '""'), 'cronjob/missing-schedule');
+      expect(finding.path).toEqual(['spec', 'schedule']);
+    });
+
+    it('rejects a TZ= prefix in favour of spec.timeZone', () => {
+      const finding = expectRule(
+        VALID_CRONJOB.replace('"0 0 * * *"', '"TZ=UTC 0 0 * * *"'),
+        'cronjob/timezone-in-schedule',
+      );
+      expect(finding.path).toEqual(['spec', 'schedule']);
+    });
+
+    it('rejects a CRON_TZ= prefix the same way', () => {
+      expectRule(
+        VALID_CRONJOB.replace('"0 0 * * *"', '"CRON_TZ=UTC 0 0 * * *"'),
+        'cronjob/timezone-in-schedule',
+      );
+    });
+
+    it('rejects a schedule with the wrong number of fields', () => {
+      const finding = expectRule(VALID_CRONJOB.replace('"0 0 * * *"', '"* * * *"'), 'cronjob/invalid-schedule');
+      expect(finding.message).toContain('5 fields');
+    });
+
+    it('rejects a field value outside its range', () => {
+      const finding = expectRule(
+        VALID_CRONJOB.replace('"0 0 * * *"', '"60 * * * *"'),
+        'cronjob/invalid-schedule',
+      );
+      expect(finding.message).toContain('minute field "60"');
+    });
+
+    it('rejects a day-of-week value outside its range', () => {
+      expectRule(VALID_CRONJOB.replace('"0 0 * * *"', '"* * * * 9"'), 'cronjob/invalid-schedule');
+    });
+
+    it('rejects an unrecognised descriptor', () => {
+      expectRule(VALID_CRONJOB.replace('"0 0 * * *"', '"@fortnightly"'), 'cronjob/invalid-schedule');
+    });
+
+    it('accepts every standard descriptor', () => {
+      for (const descriptor of ['@yearly', '@annually', '@monthly', '@weekly', '@daily', '@midnight', '@hourly']) {
+        expectRules(VALID_CRONJOB.replace('"0 0 * * *"', `"${descriptor}"`), []);
+      }
+    });
+
+    it('accepts an @every duration', () => {
+      expectRules(VALID_CRONJOB.replace('"0 0 * * *"', '"@every 1h30m"'), []);
+    });
+
+    it('rejects a malformed @every duration', () => {
+      expectRule(VALID_CRONJOB.replace('"0 0 * * *"', '"@every soon"'), 'cronjob/invalid-schedule');
+    });
+
+    it('accepts named months and weekdays, ranges, steps and lists', () => {
+      expectRules(VALID_CRONJOB.replace('"0 0 * * *"', '"0 0 1 JAN-MAR MON,WED,FRI"'), []);
+    });
+
+    it('accepts a step schedule', () => {
+      expectRules(VALID_CRONJOB.replace('"0 0 * * *"', '"*/15 * * * *"'), []);
+    });
+  });
+
+  describe('time zone', () => {
+    it('rejects an empty string', () => {
+      const finding = expectRule(cronJob('  timeZone: ""\n'), 'cronjob/invalid-time-zone');
+      expect(finding.path).toEqual(['spec', 'timeZone']);
+    });
+
+    it('rejects a name with a malformed component', () => {
+      expectRule(cronJob('  timeZone: "Europe/.."\n'), 'cronjob/invalid-time-zone');
+    });
+
+    it('rejects "Local"', () => {
+      const finding = expectRule(cronJob('  timeZone: Local\n'), 'cronjob/invalid-time-zone');
+      expect(finding.message).toContain('not an explicit time zone');
+    });
+
+    it('rejects a well-formed but unknown zone, with a suggestion', () => {
+      const finding = expectRule(cronJob('  timeZone: "Europe/Prag"\n'), 'cronjob/unknown-time-zone');
+      expect(finding.message).toContain('Did you mean "Europe/Prague"');
+      expect(finding.fix).toEqual({
+        title: 'Change to "Europe/Prague"',
+        safe: true,
+        ops: [{ op: 'set', path: ['spec', 'timeZone'], value: 'Europe/Prague' }],
+      });
+    });
+
+    it('accepts a known IANA zone', () => {
+      expectRules(cronJob('  timeZone: "America/New_York"\n'), []);
+    });
+
+    it('accepts UTC', () => {
+      expectRules(cronJob('  timeZone: UTC\n'), []);
+    });
+
+    it('is not checked when the field is absent', () => {
+      expectRules(VALID_CRONJOB, []);
+    });
+  });
+
+  describe('concurrencyPolicy', () => {
+    it('accepts every valid value', () => {
+      for (const value of ['Allow', 'Forbid', 'Replace']) {
+        expectRules(cronJob(`  concurrencyPolicy: ${value}\n`), []);
+      }
+    });
+
+    it('rejects an empty string, the enum table\'s report', () => {
+      expectRule(cronJob('  concurrencyPolicy: ""\n'), 'enum/invalid-value');
+    });
+
+    it('rejects an unknown value, with a suggestion', () => {
+      const finding = expectRule(cronJob('  concurrencyPolicy: allow\n'), 'enum/invalid-value');
+      expect(finding.message).toContain('Did you mean "Allow"');
+    });
+  });
+
+  describe('deadlines and history limits', () => {
+    it('rejects a negative startingDeadlineSeconds', () => {
+      expectRule(cronJob('  startingDeadlineSeconds: -1\n'), 'cronjob/negative-starting-deadline');
+    });
+
+    it('accepts a zero startingDeadlineSeconds', () => {
+      expectRules(cronJob('  startingDeadlineSeconds: 0\n'), []);
+    });
+
+    it('rejects a negative successfulJobsHistoryLimit', () => {
+      const finding = expectRule(
+        cronJob('  successfulJobsHistoryLimit: -1\n'),
+        'cronjob/negative-history-limit',
+      );
+      expect(finding.path).toEqual(['spec', 'successfulJobsHistoryLimit']);
+    });
+
+    it('rejects a negative failedJobsHistoryLimit', () => {
+      expectRule(cronJob('  failedJobsHistoryLimit: -1\n'), 'cronjob/negative-history-limit');
+    });
+
+    it('accepts a zero history limit — it means "keep none"', () => {
+      expectRules(cronJob('  successfulJobsHistoryLimit: 0\n  failedJobsHistoryLimit: 0\n'), []);
+    });
+  });
+
+  describe('name length', () => {
+    it('accepts a name at exactly 52 characters', () => {
+      expectRules(VALID_CRONJOB.replace('name: import', `name: ${'a'.repeat(52)}`), []);
+    });
+
+    it('rejects a name of 53 characters', () => {
+      const finding = expectRule(
+        VALID_CRONJOB.replace('name: import', `name: ${'a'.repeat(53)}`),
+        'cronjob/name-too-long',
+      );
+      expect(finding.path).toEqual(['metadata', 'name']);
+      expect(finding.message).toContain('53');
+    });
+
+    it('leaves a name that is not even a valid object name to metadata.ts', () => {
+      expectRules(VALID_CRONJOB.replace('name: import', `name: ${'A'.repeat(60)}`), [
+        'meta/invalid-name',
+      ]);
+    });
+  });
+
+  describe('jobTemplate selector', () => {
+    it('rejects a hand-written selector', () => {
+      const finding = expectRule(
+        cronJob('', '      selector:\n        matchLabels:\n          app: import\n'),
+        'cronjob/job-template-selector',
+      );
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'spec', 'selector']);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'jobTemplate', 'spec', 'selector'] },
+      ]);
+    });
+
+    it('rejects manualSelector: true — a CronJob has nothing to adopt', () => {
+      const finding = expectRule(
+        cronJob('', '      manualSelector: true\n'),
+        'cronjob/job-template-manual-selector',
+      );
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'spec', 'manualSelector']);
+    });
+
+    it('accepts manualSelector: false', () => {
+      expectRules(cronJob('', '      manualSelector: false\n'), []);
+    });
+  });
+
+  describe('jobTemplate metadata', () => {
+    it('checks jobTemplate.metadata.labels', () => {
+      const finding = expectRule(
+        cronJob('').replace(
+          '  jobTemplate:\n    spec:\n',
+          '  jobTemplate:\n    metadata:\n      labels:\n        "bad key!": x\n    spec:\n',
+        ),
+        'meta/invalid-label-key',
+      );
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'metadata', 'labels', 'bad key!']);
+    });
+
+    it('checks jobTemplate.metadata.annotations', () => {
+      expectRule(
+        cronJob('').replace(
+          '  jobTemplate:\n    spec:\n',
+          '  jobTemplate:\n    metadata:\n      annotations:\n        "bad key!": x\n    spec:\n',
+        ),
+        'meta/invalid-annotation-key',
+      );
+    });
+  });
+
+  describe('job spec rules under the jobTemplate', () => {
+    // The sharpest test that checkJobSpec is reused rather than re-derived:
+    // every one of these is a `job/*` id, reported through the deeper path
+    // cronjob.ts hands it, exactly as a Job's own spec would report it at
+    // `spec`.
+    it('rejects a negative backoffLimit', () => {
+      const finding = expectRule(cronJob('', '      backoffLimit: -1\n'), 'job/negative-backoff-limit');
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'spec', 'backoffLimit']);
+    });
+
+    it('rejects a template with no restartPolicy, since the default is Always', () => {
+      const finding = expectRule(
+        VALID_CRONJOB.replace('          restartPolicy: Never\n', ''),
+        'job/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'spec', 'template', 'spec']);
+    });
+
+    it('rejects restartPolicy: Always', () => {
+      expectRule(
+        VALID_CRONJOB.replace('restartPolicy: Never', 'restartPolicy: Always'),
+        'job/template-restart-policy',
+      );
+    });
+
+    it('requires completions on an Indexed jobTemplate', () => {
+      const finding = expectRule(
+        cronJob('', '      completionMode: Indexed\n'),
+        'job/indexed-without-completions',
+      );
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'spec']);
+      expect(finding.anchor).toBe('key');
+    });
+
+    it('rejects a per-index field on a NonIndexed jobTemplate', () => {
+      const finding = expectRule(
+        cronJob('', '      maxFailedIndexes: 1\n      backoffLimitPerIndex: 1\n'),
+        'job/requires-indexed-completion',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'jobTemplate', 'spec', 'completionMode'], value: 'Indexed' },
+      ]);
+    });
+
+    it('rejects a managedBy that is not a domain-prefixed path', () => {
+      const finding = expectRule(cronJob('', '      managedBy: kueue\n'), 'job/invalid-managed-by');
+      expect(finding.path).toEqual(['spec', 'jobTemplate', 'spec', 'managedBy']);
+    });
+
+    it('accepts a well-formed job spec', () => {
+      expectRules(
+        cronJob(
+          '',
+          '      completionMode: Indexed\n      completions: 4\n      backoffLimit: 2\n',
+        ),
+        [],
+      );
+    });
+  });
+
+  describe('pod spec rules under the template', () => {
+    it('reports container problems at the template path', () => {
+      const finding = expectRule(
+        cronJobWithPodSpec('          hostNetwork: true\n          hostUsers: false\n'),
+        'pod/host-users-conflict',
+      );
+      expect(finding.path).toEqual([
+        'spec',
+        'jobTemplate',
+        'spec',
+        'template',
+        'spec',
+        'hostNetwork',
+      ]);
+    });
+
+    it('names the template path in messages that quote a field', () => {
+      const finding = expectRule(cronJobWithPodSpec('          dnsPolicy: None\n'), 'pod/dns-none-without-config');
+      expect(finding.message).toContain('spec.jobTemplate.spec.template.spec.dnsConfig');
+    });
+
+    it("checks the CronJob's own name, not the template's", () => {
+      const finding = expectRule(
+        VALID_CRONJOB.replace('  name: import\n', '  name: Import\n'),
+        'meta/invalid-name',
+      );
+      expect(finding.path).toEqual(['metadata', 'name']);
+      expect(finding.message).toContain('CronJob name');
     });
   });
 });

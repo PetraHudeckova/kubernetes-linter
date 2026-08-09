@@ -258,6 +258,62 @@ export function jobWithPodSpec(templateSpecFragment: string): string {
   return job('', templateSpecFragment);
 }
 
+/**
+ * A minimal valid CronJob that individual tests mutate. Its jobTemplate.spec
+ * is a JobSpec one level deeper than a Job's own, so it spells out
+ * `restartPolicy` for the same reason `VALID_JOB` does.
+ */
+export const VALID_CRONJOB = `apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: import
+spec:
+  schedule: "0 0 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: import
+              image: importer:1.2.0
+`;
+
+/**
+ * Build a CronJob from a fragment of CronJobSpec, one of JobSpec (sitting
+ * next to the jobTemplate's own `template`, at `spec.jobTemplate.spec`) and
+ * one of PodSpec (at `spec.jobTemplate.spec.template.spec`, beside its
+ * `restartPolicy`) — the three levels `checkJobSpec` and the shared pod
+ * rules address once `cronjob.ts` hands them the deeper base path.
+ * Fragments are indented two spaces, matching `pod()`.
+ */
+export function cronJob(
+  specFragment: string,
+  jobSpecFragment = '',
+  templateSpecFragment = '',
+): string {
+  return `apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: import
+spec:
+  schedule: "0 0 * * *"
+${specFragment}  jobTemplate:
+    spec:
+${jobSpecFragment}      template:
+        spec:
+${templateSpecFragment}          restartPolicy: Never
+          containers:
+            - name: import
+              image: importer:1.2.0
+`;
+}
+
+/** A CronJob whose pod template carries the given PodSpec fragment. */
+export function cronJobWithPodSpec(templateSpecFragment: string): string {
+  return cronJob('', '', templateSpecFragment);
+}
+
 /** A minimal valid Service that individual tests mutate. */
 export const VALID_SERVICE = `apiVersion: v1
 kind: Service

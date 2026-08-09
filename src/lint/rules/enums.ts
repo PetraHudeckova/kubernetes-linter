@@ -119,6 +119,11 @@ const ENUMS: Record<string, EnumSpec> = {
   'PodFailurePolicyOnExitCodesRequirement.operator': { values: ['In', 'NotIn'] },
   'PodFailurePolicyOnPodConditionsPattern.status': { values: ['True', 'False', 'Unknown'] },
 
+  'CronJobSpec.concurrencyPolicy': {
+    values: ['Allow', 'Forbid', 'Replace'],
+    note: 'Defaults to Allow. "Forbid" skips a run if the previous one is still going; "Replace" cancels the previous run and starts the new one in its place.',
+  },
+
   'ServiceSpec.type': {
     values: ['ClusterIP', 'NodePort', 'LoadBalancer', 'ExternalName'],
     note: 'Defaults to ClusterIP. Each type but ExternalName builds on the one before it: a NodePort Service also has a cluster IP, and a LoadBalancer Service also has a node port.',

@@ -64,7 +64,7 @@ function lintOne(parsed: ParsedDoc, schema: Schema): Finding[] {
       path: ['kind'],
       message: `This linter understands ${listKinds(schema.kinds)}, so "${result.unsupportedKind}" was not checked.`,
       explanation:
-        'Other workload controllers — CronJob, ReplicaSet — embed a Pod template the same way a Deployment or a Job does. You can lint that template on its own by pasting it as a Pod, with the template\'s metadata and spec under a "kind: Pod" document.',
+        'Other workload controllers — ReplicaSet, ReplicationController — embed a Pod template the same way a Deployment or a Job does. You can lint that template on its own by pasting it as a Pod, with the template\'s metadata and spec under a "kind: Pod" document.',
     });
     return findings;
   }
