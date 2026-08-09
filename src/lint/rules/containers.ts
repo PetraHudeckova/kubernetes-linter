@@ -128,6 +128,21 @@ function checkInitContainer(ctx: RuleContext, ref: RuleContext['containers'][num
   const isSidecar = asString(ref.container['restartPolicy']) === 'Always';
   if (isSidecar) return;
 
+  // Container.restartPolicy — the sidecar mechanism — arrived in 1.28. On an
+  // older target the escape hatch does not exist, so pointing at it would
+  // produce a manifest the cluster rejects.
+  const sidecarsAvailable = ctx.supports([...ref.path, 'restartPolicy']);
+  const sidecarFix = sidecarsAvailable
+    ? {
+        title: 'Make it a sidecar (restartPolicy: Always)',
+        safe: false,
+        ops: [{ op: 'set' as const, path: [...ref.path, 'restartPolicy'], value: 'Always' }],
+      }
+    : undefined;
+  const sidecarAdvice = sidecarsAvailable
+    ? 'Set restartPolicy: Always on this init container to make it a sidecar, which does support them.'
+    : `Sidecar init containers, which do support them, need Kubernetes 1.28 or newer — you are linting against ${ctx.schema.version}.`;
+
   for (const field of ['readinessProbe', 'startupProbe'] as const) {
     if (ref.container[field] !== undefined) {
       ctx.report({
@@ -135,14 +150,9 @@ function checkInitContainer(ctx: RuleContext, ref: RuleContext['containers'][num
         severity: 'error',
         path: [...ref.path, field],
         message: `Init containers may not define a ${field}.`,
-        explanation:
-          'A regular init container runs to completion before the next one starts, so readiness has no meaning. Set restartPolicy: Always on this init container to make it a sidecar, which does support probes.',
+        explanation: `A regular init container runs to completion before the next one starts, so readiness has no meaning. ${sidecarAdvice}`,
         docsUrl: 'https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/',
-        fix: {
-          title: 'Make it a sidecar (restartPolicy: Always)',
-          safe: false,
-          ops: [{ op: 'set', path: [...ref.path, 'restartPolicy'], value: 'Always' }],
-        },
+        fix: sidecarFix,
       });
     }
   }
@@ -153,13 +163,8 @@ function checkInitContainer(ctx: RuleContext, ref: RuleContext['containers'][num
       severity: 'error',
       path: [...ref.path, 'lifecycle'],
       message: 'Init containers may not define lifecycle hooks.',
-      explanation:
-        'Lifecycle hooks are only honoured for containers that run for the lifetime of the Pod. Set restartPolicy: Always to turn this into a sidecar if you need them.',
-      fix: {
-        title: 'Make it a sidecar (restartPolicy: Always)',
-        safe: false,
-        ops: [{ op: 'set', path: [...ref.path, 'restartPolicy'], value: 'Always' }],
-      },
+      explanation: `Lifecycle hooks are only honoured for containers that run for the lifetime of the Pod. ${sidecarAdvice}`,
+      fix: sidecarFix,
     });
   }
 }

@@ -222,6 +222,10 @@ export const podSpecRule: Rule = {
     ] as const) {
       const value = asString(spec[field]);
       if (value === undefined) continue;
+      // Some of these arrived late (hostnameOverride in 1.34). On an older
+      // target the schema layer already reports the field as unknown; adding a
+      // format complaint on top would just be noise.
+      if (!ctx.supports(['spec', field])) continue;
       const result = check(value);
       if (!result.ok) {
         ctx.report({

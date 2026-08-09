@@ -7,7 +7,9 @@ Everything runs in the browser. The manifest never leaves the tab: there is no s
 upload, and the "Share link" button puts the document in the URL fragment, which browsers do
 not transmit.
 
-Pinned to **Kubernetes v1.36**.
+Covers **Kubernetes v1.25 through v1.36**, selectable from the header. The schema for the
+chosen version decides what counts as a valid field, so linting a manifest destined for an
+older cluster reports what that cluster would actually reject.
 
 ## What it checks
 
@@ -69,22 +71,38 @@ npm run build    # typecheck + production build into dist/
 npm run preview  # serve the production build
 ```
 
-### Updating the Kubernetes version
+### Kubernetes versions
 
-The schema is generated from upstream and committed, so builds are deterministic and offline:
+Schemas are generated from upstream and committed, so builds are deterministic and offline
+and the deployed site serves them from its own origin — nothing is fetched from GitHub or
+kubernetes.io at runtime.
 
 ```sh
-npm run gen:schema -- 1.37
+npm run gen:schema            # regenerate every supported version
+npm run gen:schema -- 1.37    # add a single new one
 ```
 
-That writes `src/schema/pod-v1.37.json`. Point the import in `src/lint/index.ts` at the new
-file. Enum values are not present in the OpenAPI document and live in
-`src/lint/rules/enums.ts`; check them against the release notes when moving versions.
+`src/lint/schemas.ts` discovers the files with `import.meta.glob`, so a new
+`src/schema/pod-1.37.json` shows up in the picker with no other code change. Vite emits each
+as its own chunk (~33 KB brotli), fetched only when that version is selected; the default
+version is bundled, so the first load makes no extra request. To move the default, change the
+static import in that file.
+
+Two things do not come from the OpenAPI document and may need attention when adding a
+version: enum values, in `src/lint/rules/enums.ts`, and any rule whose advice names a field
+that arrived in a particular release. Gate those with `ctx.supports(path)`, as
+`src/lint/rules/containers.ts` does for sidecars — before 1.28 there is no
+`Container.restartPolicy`, so offering that fix would produce a manifest the cluster rejects.
+
+**Known limitation:** enum *values* added in a later release are accepted on older versions,
+because the table has no per-value `since`. A whole field not existing yet — much the more
+common case — is handled correctly by the schema layer.
 
 ### Layout
 
 ```
-scripts/generate-schema.mjs   extracts the Pod definition closure from the k8s OpenAPI spec
+scripts/generate-schema.mjs   extracts the Pod definition closure, one file per version
+src/lint/schemas.ts           version registry and lazy chunk loading
 src/lint/schema.ts            layer 1: generic schema conformance walker
 src/lint/rules/               layer 2: one module per area, registered in registry.ts
 src/lint/fix.ts               applies fixes to the YAML AST

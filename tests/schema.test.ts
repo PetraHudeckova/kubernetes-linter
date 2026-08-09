@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lint, schema } from '../src/lint/index.js';
+import { lint, defaultSchema as schema } from '../src/lint/index.js';
 import { VALID_POD, expectRule, expectRules, findings, pod, podWithContainer } from './helpers.js';
 
 describe('schema conformance', () => {
