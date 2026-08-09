@@ -104,12 +104,16 @@ no root for still yields `unsupportedKind` and a `lint/unsupported-kind` note. B
 bundle carries every root, a multi-document manifest can mix kinds with no extra chunk load —
 which is what keeps `lint()` synchronous.
 
-A `KindDescriptor` is only `{ kind, specPath, podMetadataPath, claimTemplatesPath?, rules }`.
-The root `$ref` is deliberately *not* in it: that lives in the generated bundle, so the
-generator stays the single source of truth for definition names. `claimTemplatesPath` is the
-one concession to a kind that generates volumes: a StatefulSet's controller adds one Pod volume
-per `volumeClaimTemplates` entry, named after it, so those names reach `volumes.ts` through
-`ctx.generatedVolumes` and a mount referring to one is not reported as undeclared.
+A `KindDescriptor` is only
+`{ kind, specPath, podMetadataPath, nameFormat?, claimTemplatesPath?, rules }`. The root `$ref`
+is deliberately *not* in it: that lives in the generated bundle, so the generator stays the
+single source of truth for definition names — and `apiVersion` is derived from that definition
+name too, never declared. `nameFormat` defaults to `'subdomain'` and is `'label'` for a kind
+whose name prefixes generated Pod names (StatefulSet), which `metadata.ts` reads.
+`claimTemplatesPath` is the one concession to a kind that generates volumes: a StatefulSet's
+controller adds one Pod volume per `volumeClaimTemplates` entry, named after it, so those names
+reach `volumes.ts` through `ctx.generatedVolumes` and a mount referring to one is not reported
+as undeclared.
 
 **Rules address the PodSpec relatively.** `ctx.at(...)` prefixes `specPath`, `ctx.meta(...)`
 prefixes `podMetadataPath`, and `ctx.field(...)` renders a dotted name for a message. There are
@@ -132,8 +136,27 @@ Each controller keeps its **own** rule module rather than sharing one: `deployme
 are separate, diverge in wording and in what they forbid, and are versioned independently — so
 they are kept independent here too, and a change to one is not a change to the other.
 
-Adding a fourth kind: a root in `scripts/generate-schema.mjs`, a descriptor in `kinds.ts`, and
-whatever rules are unique to it. The reusable machinery — the schema walk, `walkFields`,
+**Adding a fourth kind**, in order:
+
+1. A root in `ROOTS` (`scripts/generate-schema.mjs`), then `npm run gen:schema` to regenerate
+   and commit *every* version bundle. Generation throws if the definition is missing from any
+   supported release, so a kind younger than the `OLDEST_MINOR` floor cannot be added without
+   moving that floor.
+2. A descriptor in `KINDS` (`src/lint/kinds.ts`) — for anything carrying a PodTemplateSpec that
+   is `specPath: ['spec','template','spec']` and
+   `podMetadataPath: ['spec','template','metadata']`, plus `nameFormat`/`claimTemplatesPath` if
+   the kind needs them.
+3. A rule module `src/lint/rules/<kind>.ts` for the controller's own fields, with `<kind>/*`
+   rule IDs, wired into that descriptor's `rules` — *not* into `RULES` in `registry.ts`, which
+   is the every-kind list. Nothing is needed for the PodSpec: the shared rules already run.
+4. Enum entries in `rules/enums.ts` for the controller's own enum fields, keyed
+   `<Definition>.<field>` — upstream's OpenAPI carries no enum values, so the table is hand-kept.
+5. Tests and copy: helpers and a valid manifest in `tests/helpers.ts`, pinned across versions in
+   `tests/versions.test.ts` (which also asserts `schema.kinds` exactly, so its list changes), an
+   example appended to `EXAMPLES` (`src/ui/examples.ts`), and the kind names in `index.html` and
+   in the `lint/unsupported-kind` explanation in `src/lint/index.ts`.
+
+The reusable machinery — the schema walk, `walkFields`,
 `enums.ts`, `fix.ts`, `parse.ts`, `k8s/*` — is kind-agnostic; `walkFields` keys on the resolved
 `$ref` owner (`Container.imagePullPolicy`), so it stays correct wherever a type is reused.
 
