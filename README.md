@@ -1,7 +1,10 @@
 # kubernetes-linter
 
-An online linter for Kubernetes **Pod** manifests. Paste YAML, get told what is wrong, why it
-is wrong, and — where the answer is unambiguous — apply the fix with one click.
+An online linter for Kubernetes **Pod** and **Deployment** manifests. Paste YAML, get told what
+is wrong, why it is wrong, and — where the answer is unambiguous — apply the fix with one click.
+
+The kind comes from the document itself, so a multi-document manifest holding both is linted
+correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
 upload, and the "Share link" button puts the document in the URL fragment, which browsers do
@@ -29,7 +32,7 @@ schema, which OpenAPI cannot express:
 
 | Area | Examples |
 | --- | --- |
-| Names | Pod, container, volume and port names against DNS-1123 / IANA rules; label and annotation keys |
+| Names | Object, container, volume and port names against DNS-1123 / IANA rules; label and annotation keys |
 | Enums | `restartPolicy`, `imagePullPolicy`, `dnsPolicy`, `protocol`, tolerations, topology spread, and ~30 more |
 | Containers | missing image, names reused across `containers` / `initContainers` / `ephemeralContainers`, probes on a non-sidecar init container |
 | Ports | ranges, name format, names reused across the Pod, host port collisions, `hostPort` vs `containerPort` under `hostNetwork` |
@@ -38,6 +41,11 @@ schema, which OpenAPI cannot express:
 | Probes | zero or several handlers, `successThreshold` on liveness, named ports that no container declares |
 | Scheduling | selector operators and their values, preference weights, toleration and topology-spread consistency |
 | Cross-field | `dnsPolicy: None` without a nameserver, `hostPID` with `shareProcessNamespace`, `runAsNonRoot` with UID 0, `privileged` with `allowPrivilegeEscalation: false`, Linux-only fields on a Windows Pod |
+| Deployment | a selector that does not match the template's labels, an empty selector, `restartPolicy` other than `Always` in the template, `activeDeadlineSeconds` or ephemeral containers in a template, `rollingUpdate` under a `Recreate` strategy, `maxSurge` and `maxUnavailable` both zero, `progressDeadlineSeconds` below `minReadySeconds` |
+
+Every row above the last applies to a Deployment too: there is one PodSpec rule set, addressed
+relative to whichever kind the document declares, so it reports against `spec.template.spec`
+on a Deployment and `spec` on a Pod.
 
 Hovering any field shows its type, whether it is required, and its description straight from
 the API specification.
@@ -83,7 +91,7 @@ npm run gen:schema -- 1.37    # add a single new one
 ```
 
 `src/lint/schemas.ts` discovers the files with `import.meta.glob`, so a new
-`src/schema/pod-1.37.json` shows up in the picker with no other code change. Vite emits each
+`src/schema/k8s-1.37.json` shows up in the picker with no other code change. Vite emits each
 as its own chunk (~33 KB brotli), fetched only when that version is selected; the default
 version is bundled, so the first load makes no extra request. To move the default, change the
 static import in that file.
@@ -101,7 +109,8 @@ common case — is handled correctly by the schema layer.
 ### Layout
 
 ```
-scripts/generate-schema.mjs   extracts the Pod definition closure, one file per version
+scripts/generate-schema.mjs   extracts the definition closure per kind, one file per version
+src/lint/kinds.ts             kind descriptors: where each kind keeps its PodSpec
 src/lint/schemas.ts           version registry and lazy chunk loading
 src/lint/schema.ts            layer 1: generic schema conformance walker
 src/lint/rules/               layer 2: one module per area, registered in registry.ts
@@ -112,6 +121,11 @@ src/editor.ts, src/ui/        CodeMirror wiring, findings panel, diff preview
 
 Adding a rule means writing a `Rule` in `src/lint/rules/` and listing it in `registry.ts`.
 A new rule pack — security posture, for example — slots in the same way.
+
+Rules address the PodSpec relatively, through `ctx.at(...)`, so one rule set serves every kind:
+`ctx.at('dnsPolicy')` is `spec.dnsPolicy` on a Pod and `spec.template.spec.dnsPolicy` on a
+Deployment. Adding a kind means a root in `scripts/generate-schema.mjs`, a descriptor in
+`src/lint/kinds.ts` naming those two paths, and any rules unique to it.
 
 ## Deployment
 

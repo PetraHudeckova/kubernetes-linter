@@ -1,5 +1,6 @@
 import type { Finding, Path, Severity } from '../types.js';
-import type { Schema } from '../schema.js';
+import type { KindSchema } from '../schema.js';
+import type { KindDescriptor } from '../kinds.js';
 import { isPlainObject } from '../schema.js';
 
 export type ContainerList = 'containers' | 'initContainers' | 'ephemeralContainers';
@@ -14,11 +15,24 @@ export interface ContainerRef {
 }
 
 export interface RuleContext {
-  pod: Record<string, unknown>;
+  /** The whole document — a Pod, a Deployment, whatever `kind` declared. */
+  doc: Record<string, unknown>;
+  /** The PodSpec, wherever this kind keeps it. */
   spec: Record<string, unknown>;
+  kind: KindDescriptor;
   /** Every container from all three lists, in declaration order. */
   containers: ContainerRef[];
-  schema: Schema;
+  schema: KindSchema;
+  /**
+   * Absolute path to a field inside the PodSpec. Rules address the spec
+   * relatively — `ctx.at('dnsPolicy')` is `spec.dnsPolicy` on a Pod and
+   * `spec.template.spec.dnsPolicy` on a Deployment.
+   */
+  at(...segments: (string | number)[]): Path;
+  /** Absolute path to a field inside the pod's own metadata. */
+  meta(...segments: (string | number)[]): Path;
+  /** Render a pod-spec-relative field name for a message. */
+  field(...segments: string[]): string;
   /**
    * Does the selected Kubernetes version know this field? Rules use it before
    * naming a field in a message or writing one in a fix, since the linter
@@ -34,11 +48,12 @@ export interface Rule {
 }
 
 export function createContext(
-  pod: Record<string, unknown>,
-  schema: Schema,
+  doc: Record<string, unknown>,
+  kind: KindDescriptor,
+  schema: KindSchema,
   findings: Finding[],
 ): RuleContext {
-  const spec = isPlainObject(pod['spec']) ? pod['spec'] : {};
+  const spec = descend(doc, kind.specPath);
   const containers: ContainerRef[] = [];
 
   const lists: ContainerList[] = ['containers', 'initContainers', 'ephemeralContainers'];
@@ -52,20 +67,34 @@ export function createContext(
         list,
         index,
         container: entry,
-        path: ['spec', list, index],
+        path: [...kind.specPath, list, index],
         label: name ? `${singular(list)} "${name}"` : `${singular(list)} #${index + 1}`,
       });
     });
   }
 
   return {
-    pod,
+    doc,
     spec,
+    kind,
     containers,
     schema,
+    at: (...segments) => [...kind.specPath, ...segments],
+    meta: (...segments) => [...kind.podMetadataPath, ...segments],
+    field: (...segments) => [...kind.specPath, ...segments].join('.'),
     supports: (path) => schema.describe(path) !== undefined,
     report: (finding) => findings.push(finding),
   };
+}
+
+/** Follow a path of mapping keys, stopping at the first thing that is not one. */
+function descend(value: Record<string, unknown>, path: Path): Record<string, unknown> {
+  let current: unknown = value;
+  for (const segment of path) {
+    if (!isPlainObject(current)) return {};
+    current = current[String(segment)];
+  }
+  return isPlainObject(current) ? current : {};
 }
 
 function singular(list: ContainerList): string {

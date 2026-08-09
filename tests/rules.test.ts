@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { expectNoRule, expectRule, expectRules, pod, podWithContainer } from './helpers.js';
+import {
+  VALID_DEPLOYMENT,
+  deployment,
+  deploymentWithPodSpec,
+  expectNoRule,
+  expectRule,
+  expectRules,
+  pod,
+  podWithContainer,
+} from './helpers.js';
 
 describe('metadata', () => {
   it('requires a name', () => {
@@ -508,5 +517,257 @@ describe('security context consistency', () => {
       podWithContainer('      securityContext:\n        seccompProfile:\n          type: RuntimeDefault\n          localhostProfile: p.json\n'),
       'pod/localhost-profile-unexpected',
     );
+  });
+});
+
+describe('deployment', () => {
+  it('accepts a minimal Deployment', () => {
+    expectRules(VALID_DEPLOYMENT, []);
+  });
+
+  describe('selector', () => {
+    it('rejects an empty selector', () => {
+      const finding = expectRule(
+        VALID_DEPLOYMENT.replace('    matchLabels:\n      app: web\n', '    matchLabels: {}\n'),
+        'deployment/empty-selector',
+      );
+      expect(finding.path).toEqual(['spec', 'selector']);
+    });
+
+    it('reports a template label that contradicts the selector', () => {
+      const finding = expectRule(
+        VALID_DEPLOYMENT.replace('      app: web\n  template', '      app: frontend\n  template'),
+        'deployment/selector-mismatch',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'metadata', 'labels', 'app']);
+      expect(finding.fix?.ops).toEqual([
+        {
+          op: 'set',
+          path: ['spec', 'template', 'metadata', 'labels', 'app'],
+          value: 'frontend',
+        },
+      ]);
+    });
+
+    it('reports a selector label the template omits entirely', () => {
+      const finding = expectRule(
+        VALID_DEPLOYMENT.replace('      app: web\n  template', '      app: web\n      tier: api\n  template'),
+        'deployment/selector-mismatch',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'metadata', 'labels']);
+      expect(finding.message).toContain('tier: api');
+    });
+
+    it('evaluates matchExpressions against the template labels', () => {
+      const yaml = VALID_DEPLOYMENT.replace(
+        '    matchLabels:\n      app: web\n',
+        '    matchExpressions:\n      - key: app\n        operator: In\n        values: [api, worker]\n',
+      );
+      const finding = expectRule(yaml, 'deployment/selector-mismatch');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0]);
+    });
+
+    it('accepts a matchExpressions selector the template satisfies', () => {
+      const yaml = VALID_DEPLOYMENT.replace(
+        '    matchLabels:\n      app: web\n',
+        '    matchExpressions:\n      - key: app\n        operator: Exists\n',
+      );
+      expectRules(yaml, []);
+    });
+
+    it('checks operator and values consistency under the deployment namespace', () => {
+      const yaml = VALID_DEPLOYMENT.replace(
+        '    matchLabels:\n      app: web\n',
+        '    matchExpressions:\n      - key: app\n        operator: Exists\n        values: [web]\n',
+      );
+      const finding = expectRule(yaml, 'deployment/selector-values-forbidden');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0, 'values']);
+    });
+
+    it('validates selector label keys', () => {
+      expectRule(
+        VALID_DEPLOYMENT.replace('      app: web\n  template', '      not a key: web\n  template'),
+        'pod/invalid-label-key',
+      );
+    });
+  });
+
+  describe('pod template', () => {
+    it('requires restartPolicy Always, with a safe fix', () => {
+      const finding = expectRule(
+        deploymentWithPodSpec('      restartPolicy: OnFailure\n'),
+        'deployment/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'restartPolicy']);
+      expect(finding.fix?.safe).toBe(true);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'template', 'spec', 'restartPolicy'], value: 'Always' },
+      ]);
+    });
+
+    it('accepts restartPolicy Always', () => {
+      expectRules(deploymentWithPodSpec('      restartPolicy: Always\n'), []);
+    });
+
+    it('forbids activeDeadlineSeconds', () => {
+      const finding = expectRule(
+        deploymentWithPodSpec('      activeDeadlineSeconds: 600\n'),
+        'deployment/template-active-deadline',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'template', 'spec', 'activeDeadlineSeconds'] },
+      ]);
+    });
+
+    it('forbids ephemeral containers', () => {
+      expectRule(
+        deploymentWithPodSpec('      ephemeralContainers:\n        - name: debug\n          image: busybox\n'),
+        'deployment/template-ephemeral-containers',
+      );
+    });
+
+    it('validates template annotation keys', () => {
+      expectRule(
+        VALID_DEPLOYMENT.replace(
+          '      labels:\n        app: web\n',
+          '      labels:\n        app: web\n      annotations:\n        "bad key": x\n',
+        ),
+        'pod/invalid-annotation-key',
+      );
+    });
+  });
+
+  describe('counters', () => {
+    it('rejects negative replicas', () => {
+      const finding = expectRule(deployment('  replicas: -1\n'), 'deployment/negative-replicas');
+      expect(finding.path).toEqual(['spec', 'replicas']);
+    });
+
+    it('accepts zero replicas', () => {
+      expectRules(deployment('  replicas: 0\n'), []);
+    });
+
+    it('rejects a negative minReadySeconds', () => {
+      expectRule(deployment('  minReadySeconds: -5\n'), 'deployment/negative-min-ready-seconds');
+    });
+
+    it('rejects a negative revisionHistoryLimit', () => {
+      expectRule(
+        deployment('  revisionHistoryLimit: -1\n'),
+        'deployment/negative-revision-history-limit',
+      );
+    });
+
+    it('requires progressDeadlineSeconds above minReadySeconds', () => {
+      const finding = expectRule(
+        deployment('  minReadySeconds: 30\n  progressDeadlineSeconds: 30\n'),
+        'deployment/invalid-progress-deadline',
+      );
+      expect(finding.message).toContain('greater than minReadySeconds');
+    });
+
+    it('accepts a progressDeadlineSeconds above minReadySeconds', () => {
+      expectRules(deployment('  minReadySeconds: 30\n  progressDeadlineSeconds: 60\n'), []);
+    });
+  });
+
+  describe('strategy', () => {
+    it('rejects rollingUpdate under a Recreate strategy', () => {
+      const finding = expectRule(
+        deployment('  strategy:\n    type: Recreate\n    rollingUpdate:\n      maxSurge: 1\n'),
+        'deployment/rolling-update-with-recreate',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'strategy', 'rollingUpdate'] },
+      ]);
+    });
+
+    it('accepts rollingUpdate under a RollingUpdate strategy', () => {
+      expectRules(
+        deployment('  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxSurge: 1\n'),
+        [],
+      );
+    });
+
+    it('rejects maxUnavailable and maxSurge both at zero', () => {
+      expectRule(
+        deployment('  strategy:\n    rollingUpdate:\n      maxUnavailable: 0\n      maxSurge: 0\n'),
+        'deployment/max-unavailable-and-surge-zero',
+      );
+    });
+
+    it('accepts maxUnavailable 0 when maxSurge is not', () => {
+      expectRules(
+        deployment('  strategy:\n    rollingUpdate:\n      maxUnavailable: 0\n      maxSurge: 1\n'),
+        [],
+      );
+    });
+
+    it('rejects a percentage above 100', () => {
+      expectRule(
+        deployment('  strategy:\n    rollingUpdate:\n      maxUnavailable: 150%\n'),
+        'deployment/percent-over-100',
+      );
+    });
+
+    it('accepts percentages within range', () => {
+      expectRules(
+        deployment('  strategy:\n    rollingUpdate:\n      maxUnavailable: 25%\n      maxSurge: 25%\n'),
+        [],
+      );
+    });
+
+    it('rejects a malformed IntOrString', () => {
+      expectRule(
+        deployment('  strategy:\n    rollingUpdate:\n      maxSurge: two\n'),
+        'deployment/invalid-percent',
+      );
+    });
+
+    it('leaves an unknown strategy type to the enum rule', () => {
+      expectRule(deployment('  strategy:\n    type: Rolling\n'), 'pod/invalid-enum-value');
+    });
+  });
+
+  describe('pod spec rules under the template', () => {
+    it('reports container problems at the template path', () => {
+      const finding = expectRule(
+        deploymentWithPodSpec('      hostNetwork: true\n      hostUsers: false\n'),
+        'pod/host-users-conflict',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'hostNetwork']);
+    });
+
+    it('names the template path in messages that quote a field', () => {
+      const finding = expectRule(
+        deploymentWithPodSpec('      dnsPolicy: None\n'),
+        'pod/dns-none-without-config',
+      );
+      expect(finding.message).toContain('spec.template.spec.dnsConfig');
+      expect(finding.fix?.ops).toEqual([
+        {
+          op: 'set',
+          path: ['spec', 'template', 'spec', 'dnsConfig', 'nameservers'],
+          value: ['1.1.1.1'],
+        },
+      ]);
+    });
+
+    it('reports a bad container image at the template path', () => {
+      const finding = expectRule(
+        VALID_DEPLOYMENT.replace('          image: nginx:1.27-alpine\n', ''),
+        'pod/missing-image',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'containers', 0]);
+    });
+
+    it('checks the Deployment\'s own name, not the template\'s', () => {
+      const finding = expectRule(
+        VALID_DEPLOYMENT.replace('  name: web\n', '  name: Web-App\n'),
+        'pod/invalid-name',
+      );
+      expect(finding.path).toEqual(['metadata', 'name']);
+      expect(finding.message).toContain('Deployment name');
+    });
   });
 });

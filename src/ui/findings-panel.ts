@@ -39,7 +39,7 @@ function emptyState(): HTMLElement {
   wrapper.innerHTML = `
     <div class="empty-mark" aria-hidden="true">✓</div>
     <h2>No problems found</h2>
-    <p>This manifest matches the Pod schema and passes every validation rule the linter knows about.</p>
+    <p>This manifest matches the Kubernetes schema and passes every validation rule the linter knows about.</p>
   `;
   return wrapper;
 }

@@ -184,6 +184,8 @@ export interface PathAtOffset {
   /** Range of the key the offset falls in, for highlighting the hover target. */
   from: number;
   to: number;
+  /** The `kind` of the document the offset falls in, so the caller can pick a schema. */
+  kind?: string;
 }
 
 /**
@@ -195,7 +197,10 @@ export function pathAtOffset(text: string, offset: number): PathAtOffset | undef
 
   for (const doc of docs) {
     const found = search((doc.contents as Node | null) ?? null, []);
-    if (found) return found;
+    if (found) {
+      const kind = doc.get('kind');
+      return typeof kind === 'string' ? { ...found, kind } : found;
+    }
   }
   return undefined;
 

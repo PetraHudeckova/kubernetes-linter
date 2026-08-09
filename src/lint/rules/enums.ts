@@ -94,17 +94,23 @@ const ENUMS: Record<string, EnumSpec> = {
     prefixes: ['SIGRTMIN', 'SIGRTMAX'],
   },
 
+  'DeploymentStrategy.type': {
+    values: ['RollingUpdate', 'Recreate'],
+    note: 'Defaults to RollingUpdate.',
+  },
+
   // Status fields, which show up whenever someone pastes `kubectl get -o yaml`.
   'PodStatus.phase': { values: ['Pending', 'Running', 'Succeeded', 'Failed', 'Unknown'] },
   'PodStatus.qosClass': { values: ['Guaranteed', 'Burstable', 'BestEffort'] },
   'PodCondition.status': { values: ['True', 'False', 'Unknown'] },
   'ResourceHealth.health': { values: ['Healthy', 'Unhealthy', 'Unknown'] },
+  'DeploymentCondition.status': { values: ['True', 'False', 'Unknown'] },
 };
 
 export const enumRule: Rule = {
   id: 'pod/enum',
   run(ctx: RuleContext) {
-    walkFields(ctx.pod, ctx.schema, ({ path, value, owner, field, property }) => {
+    walkFields(ctx.doc, ctx.schema, ({ path, value, owner, field, property }) => {
       const spec = ENUMS[`${owner}.${field}`];
       if (!spec || typeof value !== 'string') return;
 

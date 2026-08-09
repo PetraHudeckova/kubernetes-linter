@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 /**
- * Extracts the Pod schema from the Kubernetes OpenAPI spec, one file per
- * supported minor version.
+ * Extracts the schemas the linter understands from the Kubernetes OpenAPI
+ * spec, one file per supported minor version.
  *
  * The upstream swagger.json is ~4 MB and covers 500-770 definitions depending
- * on the release. Everything reachable from io.k8s.api.core.v1.Pod is only
- * ~110-135 of them (~33 KB brotli with descriptions intact), which is small
- * enough to ship to the browser. The descriptions are what let the UI explain
- * a field in the API's own words, so they are kept.
+ * on the release. Everything reachable from the roots below is only ~115-145
+ * of them (~35 KB brotli with descriptions intact), which is small enough to
+ * ship to the browser. The descriptions are what let the UI explain a field in
+ * the API's own words, so they are kept.
+ *
+ * One bundle carries every root because the closures overlap almost entirely:
+ * a Deployment reaches PodSpec through PodTemplateSpec, so the union is only
+ * seven definitions wider than Pod's alone. Separate per-kind files would be
+ * near-duplicates, and a single bundle also means lint() can switch kinds
+ * mid-document without loading anything.
  *
  * Usage:
  *   node scripts/generate-schema.mjs                # every supported version
@@ -18,7 +24,14 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT_DEF = 'io.k8s.api.core.v1.Pod';
+/**
+ * Kind name -> definition. The kind names are the contract with
+ * `src/lint/kinds.ts`, which pairs each with the path to its pod spec.
+ */
+const ROOTS = {
+  Pod: 'io.k8s.api.core.v1.Pod',
+  Deployment: 'io.k8s.api.apps.v1.Deployment',
+};
 
 /**
  * 1.25 is the floor: it is the first release after PodSecurityPolicy was
@@ -44,9 +57,11 @@ for (const version of versions) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`fetch failed for ${version}: ${res.status} ${res.statusText}`);
   const { definitions } = await res.json();
-  if (!definitions?.[ROOT_DEF]) throw new Error(`${ROOT_DEF} missing from the ${version} spec`);
+  for (const root of Object.values(ROOTS)) {
+    if (!definitions?.[root]) throw new Error(`${root} missing from the ${version} spec`);
+  }
 
-  /** Transitive $ref closure from the root definition. */
+  /** Transitive $ref closure, unioned across every root. */
   const reached = new Set();
   const walk = (name) => {
     if (reached.has(name)) return;
@@ -66,18 +81,18 @@ for (const version of versions) {
       }
     }
   };
-  walk(ROOT_DEF);
+  for (const root of Object.values(ROOTS)) walk(root);
 
   const sorted = [...reached].sort();
   const bundle = {
     k8sVersion: version,
     source: url,
     generatedAt: new Date().toISOString().slice(0, 10),
-    root: ROOT_DEF,
+    roots: ROOTS,
     definitions: Object.fromEntries(sorted.map((name) => [name, definitions[name]])),
   };
 
-  const outFile = join(outDir, `pod-${version}.json`);
+  const outFile = join(outDir, `k8s-${version}.json`);
   writeFileSync(outFile, JSON.stringify(bundle, null, 1) + '\n');
-  console.log(`pod-${version}.json: ${sorted.length} definitions`);
+  console.log(`k8s-${version}.json: ${sorted.length} definitions`);
 }

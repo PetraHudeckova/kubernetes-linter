@@ -1,9 +1,204 @@
 {
- "k8sVersion": "1.28",
- "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/release-1.28/api/openapi-spec/swagger.json",
+ "k8sVersion": "1.26",
+ "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/release-1.26/api/openapi-spec/swagger.json",
  "generatedAt": "2026-08-09",
- "root": "io.k8s.api.core.v1.Pod",
+ "roots": {
+  "Pod": "io.k8s.api.core.v1.Pod",
+  "Deployment": "io.k8s.api.apps.v1.Deployment"
+ },
  "definitions": {
+  "io.k8s.api.apps.v1.Deployment": {
+   "description": "Deployment enables declarative updates for Pods and ReplicaSets.",
+   "properties": {
+    "apiVersion": {
+     "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentSpec",
+     "description": "Specification of the desired behavior of the Deployment."
+    },
+    "status": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentStatus",
+     "description": "Most recently observed status of the Deployment."
+    }
+   },
+   "type": "object",
+   "x-kubernetes-group-version-kind": [
+    {
+     "group": "apps",
+     "kind": "Deployment",
+     "version": "v1"
+    }
+   ]
+  },
+  "io.k8s.api.apps.v1.DeploymentCondition": {
+   "description": "DeploymentCondition describes the state of a deployment at a certain point.",
+   "properties": {
+    "lastTransitionTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "Last time the condition transitioned from one status to another."
+    },
+    "lastUpdateTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "The last time this condition was updated."
+    },
+    "message": {
+     "description": "A human readable message indicating details about the transition.",
+     "type": "string"
+    },
+    "reason": {
+     "description": "The reason for the condition's last transition.",
+     "type": "string"
+    },
+    "status": {
+     "description": "Status of the condition, one of True, False, Unknown.",
+     "type": "string"
+    },
+    "type": {
+     "description": "Type of deployment condition.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "status"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DeploymentSpec": {
+   "description": "DeploymentSpec is the specification of the desired behavior of the Deployment.",
+   "properties": {
+    "minReadySeconds": {
+     "description": "Minimum number of seconds for which a newly created pod should be ready without any of its container crashing, for it to be considered available. Defaults to 0 (pod will be considered available as soon as it is ready)",
+     "format": "int32",
+     "type": "integer"
+    },
+    "paused": {
+     "description": "Indicates that the deployment is paused.",
+     "type": "boolean"
+    },
+    "progressDeadlineSeconds": {
+     "description": "The maximum time in seconds for a deployment to make progress before it is considered to be failed. The deployment controller will continue to process failed deployments and a condition with a ProgressDeadlineExceeded reason will be surfaced in the deployment status. Note that progress will not be estimated during the time a deployment is paused. Defaults to 600s.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "replicas": {
+     "description": "Number of desired pods. This is a pointer to distinguish between explicit zero and not specified. Defaults to 1.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "revisionHistoryLimit": {
+     "description": "The number of old ReplicaSets to retain to allow rollback. This is a pointer to distinguish between explicit zero and not specified. Defaults to 10.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "selector": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
+     "description": "Label selector for pods. Existing ReplicaSets whose pods are selected by this will be the ones affected by this deployment. It must match the pod template's labels."
+    },
+    "strategy": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentStrategy",
+     "description": "The deployment strategy to use to replace existing pods with new ones.",
+     "x-kubernetes-patch-strategy": "retainKeys"
+    },
+    "template": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PodTemplateSpec",
+     "description": "Template describes the pods that will be created."
+    }
+   },
+   "required": [
+    "selector",
+    "template"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DeploymentStatus": {
+   "description": "DeploymentStatus is the most recently observed status of the Deployment.",
+   "properties": {
+    "availableReplicas": {
+     "description": "Total number of available pods (ready for at least minReadySeconds) targeted by this deployment.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "collisionCount": {
+     "description": "Count of hash collisions for the Deployment. The Deployment controller uses this field as a collision avoidance mechanism when it needs to create the name for the newest ReplicaSet.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "conditions": {
+     "description": "Represents the latest available observations of a deployment's current state.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.apps.v1.DeploymentCondition"
+     },
+     "type": "array",
+     "x-kubernetes-patch-merge-key": "type",
+     "x-kubernetes-patch-strategy": "merge"
+    },
+    "observedGeneration": {
+     "description": "The generation observed by the deployment controller.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "readyReplicas": {
+     "description": "readyReplicas is the number of pods targeted by this Deployment with a Ready Condition.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "replicas": {
+     "description": "Total number of non-terminated pods targeted by this deployment (their labels match the selector).",
+     "format": "int32",
+     "type": "integer"
+    },
+    "unavailableReplicas": {
+     "description": "Total number of unavailable pods targeted by this deployment. This is the total number of pods that are still required for the deployment to have 100% available capacity. They may either be pods that are running but not yet available or pods that still have not been created.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "updatedReplicas": {
+     "description": "Total number of non-terminated pods targeted by this deployment that have the desired template spec.",
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DeploymentStrategy": {
+   "description": "DeploymentStrategy describes how to replace existing pods with new ones.",
+   "properties": {
+    "rollingUpdate": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.RollingUpdateDeployment",
+     "description": "Rolling update config params. Present only if DeploymentStrategyType = RollingUpdate."
+    },
+    "type": {
+     "description": "Type of deployment. Can be \"Recreate\" or \"RollingUpdate\". Default is RollingUpdate.\n\n",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.RollingUpdateDeployment": {
+   "description": "Spec to control the desired behavior of rolling update.",
+   "properties": {
+    "maxSurge": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of pods that can be scheduled above the desired number of pods. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). This can not be 0 if MaxUnavailable is 0. Absolute number is calculated from percentage by rounding up. Defaults to 25%. Example: when this is set to 30%, the new ReplicaSet can be scaled up immediately when the rolling update starts, such that the total number of old and new pods do not exceed 130% of desired pods. Once old pods have been killed, new ReplicaSet can be scaled up further, ensuring that total number of pods running at any time during the update is at most 130% of desired pods."
+    },
+    "maxUnavailable": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of pods that can be unavailable during the update. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). Absolute number is calculated from percentage by rounding down. This can not be 0 if MaxSurge is 0. Defaults to 25%. Example: when this is set to 30%, the old ReplicaSet can be scaled down to 70% of desired pods immediately when the rolling update starts. Once new pods are ready, old ReplicaSet can be scaled down further, followed by scaling up the new ReplicaSet, ensuring that the total number of pods available at all times during the update is at least 70% of desired pods."
+    }
+   },
+   "type": "object"
+  },
   "io.k8s.api.core.v1.AWSElasticBlockStoreVolumeSource": {
    "description": "Represents a Persistent Disk resource in AWS.\n\nAn AWS EBS disk must exist before mounting to a container. The disk must also be in the same AWS zone as the kubelet. An AWS EBS disk can only be mounted as read/write once. AWS EBS volumes support ownership management and SELinux relabeling.",
    "properties": {
@@ -225,7 +420,7 @@
      "type": "string"
     },
     "resourceClaimTemplateName": {
-     "description": "ResourceClaimTemplateName is the name of a ResourceClaimTemplate object in the same namespace as this pod.\n\nThe template will be used to create a new ResourceClaim, which will be bound to this pod. When this pod is deleted, the ResourceClaim will also be deleted. The pod name and resource name, along with a generated component, will be used to form a unique name for the ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.\n\nThis field is immutable and no changes will be made to the corresponding ResourceClaim by the control plane after creating the ResourceClaim.",
+     "description": "ResourceClaimTemplateName is the name of a ResourceClaimTemplate object in the same namespace as this pod.\n\nThe template will be used to create a new ResourceClaim, which will be bound to this pod. When this pod is deleted, the ResourceClaim will also be deleted. The name of the ResourceClaim will be <pod name>-<resource name>, where <resource name> is the PodResourceClaim.Name. Pod validation will reject the pod if the concatenated name is not valid for a ResourceClaim (e.g. too long).\n\nAn existing ResourceClaim with that name that is not owned by the pod will not be used for the pod to avoid using an unrelated resource by mistake. Scheduling and pod startup are then blocked until the unrelated ResourceClaim is removed.\n\nThis field is immutable and no changes will be made to the corresponding ResourceClaim by the control plane after creating the ResourceClaim.",
      "type": "string"
     }
    },
@@ -352,7 +547,7 @@
      "type": "string"
     },
     "imagePullPolicy": {
-     "description": "Image pull policy. One of Always, Never, IfNotPresent. Defaults to Always if :latest tag is specified, or IfNotPresent otherwise. Cannot be updated. More info: https://kubernetes.io/docs/concepts/containers/images#updating-images",
+     "description": "Image pull policy. One of Always, Never, IfNotPresent. Defaults to Always if :latest tag is specified, or IfNotPresent otherwise. Cannot be updated. More info: https://kubernetes.io/docs/concepts/containers/images#updating-images\n\n",
      "type": "string"
     },
     "lifecycle": {
@@ -385,21 +580,9 @@
      "$ref": "#/definitions/io.k8s.api.core.v1.Probe",
      "description": "Periodic probe of container service readiness. Container will be removed from service endpoints if the probe fails. Cannot be updated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes"
     },
-    "resizePolicy": {
-     "description": "Resources resize policy for the container.",
-     "items": {
-      "$ref": "#/definitions/io.k8s.api.core.v1.ContainerResizePolicy"
-     },
-     "type": "array",
-     "x-kubernetes-list-type": "atomic"
-    },
     "resources": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements",
      "description": "Compute Resources required by this container. Cannot be updated. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
-    },
-    "restartPolicy": {
-     "description": "RestartPolicy defines the restart behavior of individual containers in a pod. This field may only be set for init containers, and the only allowed value is \"Always\". For non-init containers or when this field is not specified, the restart behavior is defined by the Pod's restart policy and the container type. Setting the RestartPolicy as \"Always\" for the init container will have the following effect: this init container will be continually restarted on exit until all regular containers have terminated. Once all regular containers have completed, all init containers with restartPolicy \"Always\" will be shut down. This lifecycle differs from normal init containers and is often referred to as a \"sidecar\" container. Although this init container still starts in the init container sequence, it does not wait for the container to complete before proceeding to the next init container. Instead, the next init container starts immediately after this init container is started, or after any startupProbe has successfully completed.",
-     "type": "string"
     },
     "securityContext": {
      "$ref": "#/definitions/io.k8s.api.core.v1.SecurityContext",
@@ -422,7 +605,7 @@
      "type": "string"
     },
     "terminationMessagePolicy": {
-     "description": "Indicate how the termination message should be populated. File will use the contents of terminationMessagePath to populate the container status message on both success and failure. FallbackToLogsOnError will use the last chunk of container log output if the termination message file is empty and the container exited with an error. The log output is limited to 2048 bytes or 80 lines, whichever is smaller. Defaults to File. Cannot be updated.",
+     "description": "Indicate how the termination message should be populated. File will use the contents of terminationMessagePath to populate the container status message on both success and failure. FallbackToLogsOnError will use the last chunk of container log output if the termination message file is empty and the container exited with an error. The log output is limited to 2048 bytes or 80 lines, whichever is smaller. Defaults to File. Cannot be updated.\n\n",
      "type": "string"
     },
     "tty": {
@@ -479,30 +662,12 @@
      "type": "string"
     },
     "protocol": {
-     "description": "Protocol for port. Must be UDP, TCP, or SCTP. Defaults to \"TCP\".",
+     "description": "Protocol for port. Must be UDP, TCP, or SCTP. Defaults to \"TCP\".\n\n",
      "type": "string"
     }
    },
    "required": [
     "containerPort"
-   ],
-   "type": "object"
-  },
-  "io.k8s.api.core.v1.ContainerResizePolicy": {
-   "description": "ContainerResizePolicy represents resource resize policy for the container.",
-   "properties": {
-    "resourceName": {
-     "description": "Name of the resource to which this resource resize policy applies. Supported values: cpu, memory.",
-     "type": "string"
-    },
-    "restartPolicy": {
-     "description": "Restart policy to apply when specified resource is resized. If not specified, it defaults to NotRequired.",
-     "type": "string"
-    }
-   },
-   "required": [
-    "resourceName",
-    "restartPolicy"
    ],
    "type": "object"
   },
@@ -590,53 +755,42 @@
   "io.k8s.api.core.v1.ContainerStatus": {
    "description": "ContainerStatus contains details for the current status of this container.",
    "properties": {
-    "allocatedResources": {
-     "additionalProperties": {
-      "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
-     },
-     "description": "AllocatedResources represents the compute resources allocated for this container by the node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission and after successfully admitting desired pod resize.",
-     "type": "object"
-    },
     "containerID": {
-     "description": "ContainerID is the ID of the container in the format '<type>://<container_id>'. Where type is a container runtime identifier, returned from Version call of CRI API (for example \"containerd\").",
+     "description": "Container's ID in the format '<type>://<container_id>'.",
      "type": "string"
     },
     "image": {
-     "description": "Image is the name of container image that the container is running. The container image may not match the image used in the PodSpec, as it may have been resolved by the runtime. More info: https://kubernetes.io/docs/concepts/containers/images.",
+     "description": "The image the container is running. More info: https://kubernetes.io/docs/concepts/containers/images.",
      "type": "string"
     },
     "imageID": {
-     "description": "ImageID is the image ID of the container's image. The image ID may not match the image ID of the image used in the PodSpec, as it may have been resolved by the runtime.",
+     "description": "ImageID of the container's image.",
      "type": "string"
     },
     "lastState": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ContainerState",
-     "description": "LastTerminationState holds the last termination state of the container to help debug container crashes and restarts. This field is not populated if the container is still running and RestartCount is 0."
+     "description": "Details about the container's last termination condition."
     },
     "name": {
-     "description": "Name is a DNS_LABEL representing the unique name of the container. Each container in a pod must have a unique name across all container types. Cannot be updated.",
+     "description": "This must be a DNS_LABEL. Each container in a pod must have a unique name. Cannot be updated.",
      "type": "string"
     },
     "ready": {
-     "description": "Ready specifies whether the container is currently passing its readiness check. The value will change as readiness probes keep executing. If no readiness probes are specified, this field defaults to true once the container is fully started (see Started field).\n\nThe value is typically used to determine whether a container is ready to accept traffic.",
+     "description": "Specifies whether the container has passed its readiness probe.",
      "type": "boolean"
     },
-    "resources": {
-     "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements",
-     "description": "Resources represents the compute resource requests and limits that have been successfully enacted on the running container after it has been started or has been successfully resized."
-    },
     "restartCount": {
-     "description": "RestartCount holds the number of times the container has been restarted. Kubelet makes an effort to always increment the value, but there are cases when the state may be lost due to node restarts and then the value may be reset to 0. The value is never negative.",
+     "description": "The number of times the container has been restarted.",
      "format": "int32",
      "type": "integer"
     },
     "started": {
-     "description": "Started indicates whether the container has finished its postStart lifecycle hook and passed its startup probe. Initialized as false, becomes true after startupProbe is considered successful. Resets to false when the container is restarted, or if kubelet loses state temporarily. In both cases, startup probes will run again. Is always true when no startupProbe is defined and container is running and has passed the postStart lifecycle hook. The null value must be treated the same as false.",
+     "description": "Specifies whether the container has passed its startup probe. Initialized as false, becomes true after startupProbe is considered successful. Resets to false when the container is restarted, or if kubelet loses state temporarily. Is always true when no startupProbe is defined.",
      "type": "boolean"
     },
     "state": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ContainerState",
-     "description": "State holds details about the container's current condition."
+     "description": "Details about the container's current condition."
     }
    },
    "required": [
@@ -714,7 +868,7 @@
     },
     "sizeLimit": {
      "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity",
-     "description": "sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir"
+     "description": "sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: http://kubernetes.io/docs/user-guide/volumes#emptydir"
     }
    },
    "type": "object"
@@ -818,7 +972,7 @@
      "type": "string"
     },
     "imagePullPolicy": {
-     "description": "Image pull policy. One of Always, Never, IfNotPresent. Defaults to Always if :latest tag is specified, or IfNotPresent otherwise. Cannot be updated. More info: https://kubernetes.io/docs/concepts/containers/images#updating-images",
+     "description": "Image pull policy. One of Always, Never, IfNotPresent. Defaults to Always if :latest tag is specified, or IfNotPresent otherwise. Cannot be updated. More info: https://kubernetes.io/docs/concepts/containers/images#updating-images\n\n",
      "type": "string"
     },
     "lifecycle": {
@@ -851,21 +1005,9 @@
      "$ref": "#/definitions/io.k8s.api.core.v1.Probe",
      "description": "Probes are not allowed for ephemeral containers."
     },
-    "resizePolicy": {
-     "description": "Resources resize policy for the container.",
-     "items": {
-      "$ref": "#/definitions/io.k8s.api.core.v1.ContainerResizePolicy"
-     },
-     "type": "array",
-     "x-kubernetes-list-type": "atomic"
-    },
     "resources": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements",
      "description": "Resources are not allowed for ephemeral containers. Ephemeral containers use spare resources already allocated to the pod."
-    },
-    "restartPolicy": {
-     "description": "Restart policy for the container to manage the restart behavior of each container within a pod. This may only be set for init containers. You cannot set this field on ephemeral containers.",
-     "type": "string"
     },
     "securityContext": {
      "$ref": "#/definitions/io.k8s.api.core.v1.SecurityContext",
@@ -892,7 +1034,7 @@
      "type": "string"
     },
     "terminationMessagePolicy": {
-     "description": "Indicate how the termination message should be populated. File will use the contents of terminationMessagePath to populate the container status message on both success and failure. FallbackToLogsOnError will use the last chunk of container log output if the termination message file is empty and the container exited with an error. The log output is limited to 2048 bytes or 80 lines, whichever is smaller. Defaults to File. Cannot be updated.",
+     "description": "Indicate how the termination message should be populated. File will use the contents of terminationMessagePath to populate the container status message on both success and failure. FallbackToLogsOnError will use the last chunk of container log output if the termination message file is empty and the container exited with an error. The log output is limited to 2048 bytes or 80 lines, whichever is smaller. Defaults to File. Cannot be updated.\n\n",
      "type": "string"
     },
     "tty": {
@@ -1138,7 +1280,7 @@
      "description": "Name or number of the port to access on the container. Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME."
     },
     "scheme": {
-     "description": "Scheme to use for connecting to the host. Defaults to HTTP.",
+     "description": "Scheme to use for connecting to the host. Defaults to HTTP.\n\n",
      "type": "string"
     }
    },
@@ -1177,16 +1319,6 @@
     },
     "ip": {
      "description": "IP address of the host file entry.",
-     "type": "string"
-    }
-   },
-   "type": "object"
-  },
-  "io.k8s.api.core.v1.HostIP": {
-   "description": "HostIP represents a single IP address allocated to the host.",
-   "properties": {
-    "ip": {
-     "description": "IP is the IP address assigned to the host",
      "type": "string"
     }
    },
@@ -1398,7 +1530,7 @@
      "type": "string"
     },
     "operator": {
-     "description": "Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.",
+     "description": "Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.\n\n",
      "type": "string"
     },
     "values": {
@@ -1722,10 +1854,10 @@
    "type": "object"
   },
   "io.k8s.api.core.v1.PodIP": {
-   "description": "PodIP represents a single IP address allocated to the pod.",
+   "description": "IP address information for entries in the (plural) PodIPs field. Each entry includes:\n\n\tIP: An IP address allocated to the pod. Routable at least within the cluster.",
    "properties": {
     "ip": {
-     "description": "IP is the IP address assigned to the pod",
+     "description": "ip is an IP address (IPv4 or IPv6) assigned to the pod",
      "type": "string"
     }
    },
@@ -1767,23 +1899,6 @@
     "source": {
      "$ref": "#/definitions/io.k8s.api.core.v1.ClaimSource",
      "description": "Source describes where to find the ResourceClaim."
-    }
-   },
-   "required": [
-    "name"
-   ],
-   "type": "object"
-  },
-  "io.k8s.api.core.v1.PodResourceClaimStatus": {
-   "description": "PodResourceClaimStatus is stored in the PodStatus for each PodResourceClaim which references a ResourceClaimTemplate. It stores the generated name for the corresponding ResourceClaim.",
-   "properties": {
-    "name": {
-     "description": "Name uniquely identifies this resource claim inside the pod. This must match the name of an entry in pod.spec.resourceClaims, which implies that the string must be a DNS_LABEL.",
-     "type": "string"
-    },
-    "resourceClaimName": {
-     "description": "ResourceClaimName is the name of the ResourceClaim that was generated for the Pod in the namespace of the Pod. It this is unset, then generating a ResourceClaim was not necessary. The pod.spec.resourceClaims entry can be ignored in this case.",
-     "type": "string"
     }
    },
    "required": [
@@ -1890,7 +2005,7 @@
      "description": "Specifies the DNS parameters of a pod. Parameters specified here will be merged to the generated DNS configuration based on DNSPolicy."
     },
     "dnsPolicy": {
-     "description": "Set DNS policy for the pod. Defaults to \"ClusterFirst\". Valid values are 'ClusterFirstWithHostNet', 'ClusterFirst', 'Default' or 'None'. DNS parameters given in DNSConfig will be merged with the policy selected with DNSPolicy. To have DNS options set along with hostNetwork, you have to specify DNS policy explicitly to 'ClusterFirstWithHostNet'.",
+     "description": "Set DNS policy for the pod. Defaults to \"ClusterFirst\". Valid values are 'ClusterFirstWithHostNet', 'ClusterFirst', 'Default' or 'None'. DNS parameters given in DNSConfig will be merged with the policy selected with DNSPolicy. To have DNS options set along with hostNetwork, you have to specify DNS policy explicitly to 'ClusterFirstWithHostNet'.\n\n",
      "type": "string"
     },
     "enableServiceLinks": {
@@ -2010,7 +2125,7 @@
      "x-kubernetes-patch-strategy": "merge,retainKeys"
     },
     "restartPolicy": {
-     "description": "Restart policy for all containers within the pod. One of Always, OnFailure, Never. In some contexts, only a subset of those values may be permitted. Default to Always. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy",
+     "description": "Restart policy for all containers within the pod. One of Always, OnFailure, Never. Default to Always. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy\n\n",
      "type": "string"
     },
     "runtimeClassName": {
@@ -2022,7 +2137,7 @@
      "type": "string"
     },
     "schedulingGates": {
-     "description": "SchedulingGates is an opaque list of values that if specified will block scheduling the pod. If schedulingGates is not empty, the pod will stay in the SchedulingGated state and the scheduler will not attempt to schedule the pod.\n\nSchedulingGates can only be set at pod creation time, and be removed only afterwards.\n\nThis is a beta feature enabled by the PodSchedulingReadiness feature gate.",
+     "description": "SchedulingGates is an opaque list of values that if specified will block scheduling the pod. More info:  https://git.k8s.io/enhancements/keps/sig-scheduling/3521-pod-scheduling-readiness.\n\nThis is an alpha-level feature enabled by PodSchedulingReadiness feature gate.",
      "items": {
       "$ref": "#/definitions/io.k8s.api.core.v1.PodSchedulingGate"
      },
@@ -2126,18 +2241,8 @@
      "type": "array"
     },
     "hostIP": {
-     "description": "hostIP holds the IP address of the host to which the pod is assigned. Empty if the pod has not started yet. A pod can be assigned to a node that has a problem in kubelet which in turns mean that HostIP will not be updated even if there is a node is assigned to pod",
+     "description": "IP address of the host to which the pod is assigned. Empty if not yet scheduled.",
      "type": "string"
-    },
-    "hostIPs": {
-     "description": "hostIPs holds the IP addresses allocated to the host. If this field is specified, the first entry must match the hostIP field. This list is empty if the pod has not started yet. A pod can be assigned to a node that has a problem in kubelet which in turns means that HostIPs will not be updated even if there is a node is assigned to this pod.",
-     "items": {
-      "$ref": "#/definitions/io.k8s.api.core.v1.HostIP"
-     },
-     "type": "array",
-     "x-kubernetes-list-type": "atomic",
-     "x-kubernetes-patch-merge-key": "ip",
-     "x-kubernetes-patch-strategy": "merge"
     },
     "initContainerStatuses": {
      "description": "The list has one entry per init container in the manifest. The most recent successful init container will have ready = true, the most recently started container will have startTime set. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-and-container-status",
@@ -2155,11 +2260,11 @@
      "type": "string"
     },
     "phase": {
-     "description": "The phase of a Pod is a simple, high-level summary of where the Pod is in its lifecycle. The conditions array, the reason and message fields, and the individual container status arrays contain more detail about the pod's status. There are five possible phase values:\n\nPending: The pod has been accepted by the Kubernetes system, but one or more of the container images has not been created. This includes time before being scheduled as well as time spent downloading images over the network, which could take a while. Running: The pod has been bound to a node, and all of the containers have been created. At least one container is still running, or is in the process of starting or restarting. Succeeded: All containers in the pod have terminated in success, and will not be restarted. Failed: All containers in the pod have terminated, and at least one container has terminated in failure. The container either exited with non-zero status or was terminated by the system. Unknown: For some reason the state of the pod could not be obtained, typically due to an error in communicating with the host of the pod.\n\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-phase",
+     "description": "The phase of a Pod is a simple, high-level summary of where the Pod is in its lifecycle. The conditions array, the reason and message fields, and the individual container status arrays contain more detail about the pod's status. There are five possible phase values:\n\nPending: The pod has been accepted by the Kubernetes system, but one or more of the container images has not been created. This includes time before being scheduled as well as time spent downloading images over the network, which could take a while. Running: The pod has been bound to a node, and all of the containers have been created. At least one container is still running, or is in the process of starting or restarting. Succeeded: All containers in the pod have terminated in success, and will not be restarted. Failed: All containers in the pod have terminated, and at least one container has terminated in failure. The container either exited with non-zero status or was terminated by the system. Unknown: For some reason the state of the pod could not be obtained, typically due to an error in communicating with the host of the pod.\n\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-phase\n\n",
      "type": "string"
     },
     "podIP": {
-     "description": "podIP address allocated to the pod. Routable at least within the cluster. Empty if not yet allocated.",
+     "description": "IP address allocated to the pod. Routable at least within the cluster. Empty if not yet allocated.",
      "type": "string"
     },
     "podIPs": {
@@ -2172,33 +2277,30 @@
      "x-kubernetes-patch-strategy": "merge"
     },
     "qosClass": {
-     "description": "The Quality of Service (QOS) classification assigned to the pod based on resource requirements See PodQOSClass type for available QOS classes More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/#quality-of-service-classes",
+     "description": "The Quality of Service (QOS) classification assigned to the pod based on resource requirements See PodQOSClass type for available QOS classes More info: https://git.k8s.io/community/contributors/design-proposals/node/resource-qos.md\n\n",
      "type": "string"
     },
     "reason": {
      "description": "A brief CamelCase message indicating details about why the pod is in this state. e.g. 'Evicted'",
      "type": "string"
     },
-    "resize": {
-     "description": "Status of resources resize desired for pod's containers. It is empty if no resources resize is pending. Any changes to container resources will automatically set this to \"Proposed\"",
-     "type": "string"
-    },
-    "resourceClaimStatuses": {
-     "description": "Status of resource claims.",
-     "items": {
-      "$ref": "#/definitions/io.k8s.api.core.v1.PodResourceClaimStatus"
-     },
-     "type": "array",
-     "x-kubernetes-list-map-keys": [
-      "name"
-     ],
-     "x-kubernetes-list-type": "map",
-     "x-kubernetes-patch-merge-key": "name",
-     "x-kubernetes-patch-strategy": "merge,retainKeys"
-    },
     "startTime": {
      "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
      "description": "RFC 3339 date and time at which the object was acknowledged by the Kubelet. This is before the Kubelet pulled the container image(s) for the pod."
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.core.v1.PodTemplateSpec": {
+   "description": "PodTemplateSpec describes the data a pod should have when created from a template",
+   "properties": {
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PodSpec",
+     "description": "Specification of the desired behavior of the pod. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
     }
    },
    "type": "object"
@@ -2257,7 +2359,7 @@
     },
     "grpc": {
      "$ref": "#/definitions/io.k8s.api.core.v1.GRPCAction",
-     "description": "GRPC specifies an action involving a GRPC port."
+     "description": "GRPC specifies an action involving a GRPC port. This is a beta field and requires enabling GRPCContainerProbe feature gate."
     },
     "httpGet": {
      "$ref": "#/definitions/io.k8s.api.core.v1.HTTPGetAction",
@@ -2452,7 +2554,7 @@
      "additionalProperties": {
       "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
      },
-     "description": "Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. Requests cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+     "description": "Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
      "type": "object"
     }
    },
@@ -2535,11 +2637,11 @@
    "description": "SeccompProfile defines a pod/container's seccomp profile settings. Only one profile source may be set.",
    "properties": {
     "localhostProfile": {
-     "description": "localhostProfile indicates a profile defined in a file on the node should be used. The profile must be preconfigured on the node to work. Must be a descending path, relative to the kubelet's configured seccomp profile location. Must be set if type is \"Localhost\". Must NOT be set for any other type.",
+     "description": "localhostProfile indicates a profile defined in a file on the node should be used. The profile must be preconfigured on the node to work. Must be a descending path, relative to the kubelet's configured seccomp profile location. Must only be set if type is \"Localhost\".",
      "type": "string"
     },
     "type": {
-     "description": "type indicates which kind of seccomp profile will be applied. Valid options are:\n\nLocalhost - a profile defined in a file on the node should be used. RuntimeDefault - the container runtime default profile should be used. Unconfined - no profile should be applied.",
+     "description": "type indicates which kind of seccomp profile will be applied. Valid options are:\n\nLocalhost - a profile defined in a file on the node should be used. RuntimeDefault - the container runtime default profile should be used. Unconfined - no profile should be applied.\n\n",
      "type": "string"
     }
    },
@@ -2778,7 +2880,7 @@
    "description": "The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.",
    "properties": {
     "effect": {
-     "description": "Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.",
+     "description": "Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.\n\n",
      "type": "string"
     },
     "key": {
@@ -2786,7 +2888,7 @@
      "type": "string"
     },
     "operator": {
-     "description": "Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.",
+     "description": "Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.\n\n",
      "type": "string"
     },
     "tolerationSeconds": {
@@ -2809,7 +2911,7 @@
      "description": "LabelSelector is used to find matching pods. Pods that match this label selector are counted to determine the number of pods in their corresponding topology domain."
     },
     "matchLabelKeys": {
-     "description": "MatchLabelKeys is a set of pod label keys to select the pods over which spreading will be calculated. The keys are used to lookup values from the incoming pod labels, those key-value labels are ANDed with labelSelector to select the group of existing pods over which spreading will be calculated for the incoming pod. The same key is forbidden to exist in both MatchLabelKeys and LabelSelector. MatchLabelKeys cannot be set when LabelSelector isn't set. Keys that don't exist in the incoming pod labels will be ignored. A null or empty list means only match against labelSelector.\n\nThis is a beta field and requires the MatchLabelKeysInPodTopologySpread feature gate to be enabled (enabled by default).",
+     "description": "MatchLabelKeys is a set of pod label keys to select the pods over which spreading will be calculated. The keys are used to lookup values from the incoming pod labels, those key-value labels are ANDed with labelSelector to select the group of existing pods over which spreading will be calculated for the incoming pod. Keys that don't exist in the incoming pod labels will be ignored. A null or empty list means only match against labelSelector.",
      "items": {
       "type": "string"
      },
@@ -2839,7 +2941,7 @@
      "type": "string"
     },
     "whenUnsatisfiable": {
-     "description": "WhenUnsatisfiable indicates how to deal with a pod if it doesn't satisfy the spread constraint. - DoNotSchedule (default) tells the scheduler not to schedule it. - ScheduleAnyway tells the scheduler to schedule the pod in any location,\n  but giving higher precedence to topologies that would help reduce the\n  skew.\nA constraint is considered \"Unsatisfiable\" for an incoming pod if and only if every possible node assignment for that pod would violate \"MaxSkew\" on some topology. For example, in a 3-zone cluster, MaxSkew is set to 1, and pods with the same labelSelector spread as 3/1/1: | zone1 | zone2 | zone3 | | P P P |   P   |   P   | If WhenUnsatisfiable is set to DoNotSchedule, incoming pod can only be scheduled to zone2(zone3) to become 3/2/1(3/1/2) as ActualSkew(2-1) on zone2(zone3) satisfies MaxSkew(1). In other words, the cluster can still be imbalanced, but scheduler won't make it *more* imbalanced. It's a required field.",
+     "description": "WhenUnsatisfiable indicates how to deal with a pod if it doesn't satisfy the spread constraint. - DoNotSchedule (default) tells the scheduler not to schedule it. - ScheduleAnyway tells the scheduler to schedule the pod in any location,\n  but giving higher precedence to topologies that would help reduce the\n  skew.\nA constraint is considered \"Unsatisfiable\" for an incoming pod if and only if every possible node assignment for that pod would violate \"MaxSkew\" on some topology. For example, in a 3-zone cluster, MaxSkew is set to 1, and pods with the same labelSelector spread as 3/1/1: | zone1 | zone2 | zone3 | | P P P |   P   |   P   | If WhenUnsatisfiable is set to DoNotSchedule, incoming pod can only be scheduled to zone2(zone3) to become 3/2/1(3/1/2) as ActualSkew(2-1) on zone2(zone3) satisfies MaxSkew(1). In other words, the cluster can still be imbalanced, but scheduler won't make it *more* imbalanced. It's a required field.\n\n",
      "type": "string"
     }
    },
@@ -3157,7 +3259,7 @@
      "type": "string"
     },
     "hostProcess": {
-     "description": "HostProcess determines if a container should be run as a 'Host Process' container. All of a Pod's containers must have the same effective HostProcess value (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers). In addition, if HostProcess is true then HostNetwork must also be set to true.",
+     "description": "HostProcess determines if a container should be run as a 'Host Process' container. This field is alpha-level and will only be honored by components that enable the WindowsHostProcessContainers feature flag. Setting this field without the feature flag will result in errors when validating the Pod. All of a Pod's containers must have the same effective HostProcess value (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).  In addition, if HostProcess is true then HostNetwork must also be set to true.",
      "type": "boolean"
     },
     "runAsUserName": {
@@ -3201,7 +3303,9 @@
    "properties": {
     "key": {
      "description": "key is the label key that the selector applies to.",
-     "type": "string"
+     "type": "string",
+     "x-kubernetes-patch-merge-key": "key",
+     "x-kubernetes-patch-strategy": "merge"
     },
     "operator": {
      "description": "operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.",
@@ -3262,7 +3366,7 @@
      "additionalProperties": {
       "type": "string"
      },
-     "description": "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations",
+     "description": "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: http://kubernetes.io/docs/user-guide/annotations",
      "type": "object"
     },
     "creationTimestamp": {
@@ -3299,7 +3403,7 @@
      "additionalProperties": {
       "type": "string"
      },
-     "description": "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels",
+     "description": "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: http://kubernetes.io/docs/user-guide/labels",
      "type": "object"
     },
     "managedFields": {
@@ -3310,11 +3414,11 @@
      "type": "array"
     },
     "name": {
-     "description": "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
+     "description": "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
      "type": "string"
     },
     "namespace": {
-     "description": "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces",
+     "description": "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/namespaces",
      "type": "string"
     },
     "ownerReferences": {
@@ -3335,7 +3439,7 @@
      "type": "string"
     },
     "uid": {
-     "description": "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
+     "description": "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
      "type": "string"
     }
    },
@@ -3361,11 +3465,11 @@
      "type": "string"
     },
     "name": {
-     "description": "Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
+     "description": "Name of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
      "type": "string"
     },
     "uid": {
-     "description": "UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
+     "description": "UID of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
      "type": "string"
     }
    },

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { lint, defaultSchema as schema } from '../src/lint/index.js';
-import { VALID_POD, expectRule, expectRules, findings, pod, podWithContainer } from './helpers.js';
+import {
+  VALID_DEPLOYMENT,
+  VALID_POD,
+  expectRule,
+  expectRules,
+  findings,
+  pod,
+  podWithContainer,
+} from './helpers.js';
 
 describe('schema conformance', () => {
   it('accepts a valid Pod', () => {
@@ -110,10 +118,19 @@ describe('schema conformance', () => {
       expectRule(VALID_POD.replace('kind: Pod\n', ''), 'schema/missing-kind');
     });
 
-    it('skips Pod rules for another kind, with an explanation', () => {
-      const result = findings(VALID_POD.replace('kind: Pod', 'kind: Deployment'));
+    it('skips the rules for a kind it does not carry, with an explanation', () => {
+      const result = findings(VALID_POD.replace('kind: Pod', 'kind: StatefulSet'));
       expect(result.map((finding) => finding.ruleId)).toEqual(['lint/unsupported-kind']);
       expect(result[0]?.severity).toBe('info');
+    });
+
+    it('expects the group-prefixed apiVersion for a Deployment', () => {
+      const finding = expectRule(
+        VALID_DEPLOYMENT.replace('apiVersion: apps/v1', 'apiVersion: v1'),
+        'schema/wrong-api-version',
+      );
+      expect(finding.message).toContain('apps/v1');
+      expect(finding.fix?.ops).toEqual([{ op: 'set', path: ['apiVersion'], value: 'apps/v1' }]);
     });
   });
 
@@ -165,18 +182,40 @@ describe('schema conformance', () => {
 });
 
 describe('field descriptions', () => {
+  const pod = schema.for('Pod')!;
+  const deployment = schema.for('Deployment')!;
+
   it('describes a field from the API spec', () => {
-    const described = schema.describe(['spec', 'containers', 0, 'imagePullPolicy']);
+    const described = pod.describe(['spec', 'containers', 0, 'imagePullPolicy']);
     expect(described?.type).toBe('string');
     expect(described?.description).toContain('IfNotPresent');
   });
 
   it('marks required fields', () => {
-    expect(schema.describe(['spec', 'containers'])?.required).toBe(true);
-    expect(schema.describe(['spec', 'nodeName'])?.required).toBe(false);
+    expect(pod.describe(['spec', 'containers'])?.required).toBe(true);
+    expect(pod.describe(['spec', 'nodeName'])?.required).toBe(false);
   });
 
   it('returns nothing for an unknown path', () => {
-    expect(schema.describe(['spec', 'nope'])).toBeUndefined();
+    expect(pod.describe(['spec', 'nope'])).toBeUndefined();
+  });
+
+  it('resolves the same PodSpec field under a Deployment template', () => {
+    const described = deployment.describe([
+      'spec',
+      'template',
+      'spec',
+      'containers',
+      0,
+      'imagePullPolicy',
+    ]);
+    expect(described?.type).toBe('string');
+    expect(described?.description).toContain('IfNotPresent');
+    expect(deployment.describe(['spec', 'containers'])).toBeUndefined();
+  });
+
+  it('carries a root for every supported kind', () => {
+    expect(schema.kinds).toEqual(['Pod', 'Deployment']);
+    expect(schema.for('StatefulSet')).toBeUndefined();
   });
 });

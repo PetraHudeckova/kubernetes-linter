@@ -150,4 +150,40 @@ spec:
         allowPrivilegeEscalation: false
 `,
   },
+  {
+    id: 'deployment',
+    label: 'A Deployment with problems',
+    blurb: 'A selector that does not match its template, a run-to-completion pod spec and an impossible rollout.',
+    yaml: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      # The template below labels its Pods "web", so this selects nothing.
+      app: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 0
+  minReadySeconds: 30
+  progressDeadlineSeconds: 30
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      restartPolicy: OnFailure
+      activeDeadlineSeconds: 600
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 8080
+              name: http
+`,
+  },
 ];
