@@ -422,3 +422,29 @@ export function ingressClass(specFragment: string, metadataFragment = '  name: n
 export function ingressClassParameters(parametersFragment: string): string {
   return ingressClass(`  controller: k8s.io/ingress-nginx\n  parameters:\n${parametersFragment}`);
 }
+
+/** A minimal valid PersistentVolumeClaim that individual tests mutate. */
+export const VALID_PERSISTENTVOLUMECLAIM = `apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+`;
+
+/**
+ * Build a PersistentVolumeClaim from a fragment of PersistentVolumeClaimSpec.
+ * Like `service()` the fragment is the whole spec: a PersistentVolumeClaim has
+ * no pod template to keep consistent. Fragments are indented two spaces,
+ * matching `pod()`.
+ */
+export function persistentVolumeClaim(
+  specFragment: string,
+  metadataFragment = '  name: data\n',
+): string {
+  return `apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n${metadataFragment}spec:\n${specFragment}`;
+}

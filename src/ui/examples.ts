@@ -438,4 +438,35 @@ spec:
               image: reporter:2.4.0
 `,
   },
+  {
+    id: 'persistentvolumeclaim',
+    label: 'A PersistentVolumeClaim with problems',
+    blurb:
+      'Two access modes that contradict each other, a storage class name that is not a DNS subdomain, a quantity with an invented byte suffix, and a dataSource that disagrees with dataSourceRef.',
+    yaml: `apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reports-data
+spec:
+  # ReadWriteOncePod already guarantees the volume to a single Pod, so pairing
+  # it with another mode contradicts that guarantee.
+  accessModes:
+    - ReadWriteOnce
+    - ReadWriteOncePod
+  # storageClassName is a DNS subdomain, so it cannot carry an underscore.
+  storageClassName: fast_ssd
+  resources:
+    requests:
+      # A quantity has no "B" suffix for bytes.
+      storage: 10GB
+  dataSource:
+    kind: PersistentVolumeClaim
+    name: reports-data-snapshot
+  dataSourceRef:
+    # dataSourceRef is the newer form of the same setting, so the apiserver
+    # keeps the two in sync automatically — it rejects them naming different objects.
+    kind: PersistentVolumeClaim
+    name: reports-data-backup
+`,
+  },
 ];

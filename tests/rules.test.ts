@@ -6,6 +6,7 @@ import {
   VALID_INGRESS,
   VALID_INGRESS_CLASS,
   VALID_JOB,
+  VALID_PERSISTENTVOLUMECLAIM,
   VALID_SERVICE,
   VALID_STATEFULSET,
   cronJob,
@@ -24,6 +25,7 @@ import {
   ingressWithPaths,
   job,
   jobWithPodSpec,
+  persistentVolumeClaim,
   pod,
   podWithContainer,
   ruleIds,
@@ -3015,5 +3017,255 @@ describe('ingressclass', () => {
     const ids = ruleIds(ingressClass('  containers:\n    - name: web\n      image: a\n'));
     expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
     expect(ids).toContain('schema/unknown-field');
+  });
+});
+
+describe('persistentvolumeclaim', () => {
+  const withStorage = (fragment: string) =>
+    persistentVolumeClaim(
+      `  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 10Gi\n${fragment}`,
+    );
+
+  it('accepts a valid PersistentVolumeClaim', () => {
+    expectRules(VALID_PERSISTENTVOLUMECLAIM, []);
+  });
+
+  describe('access modes', () => {
+    it('requires at least one', () => {
+      const finding = expectRule(
+        persistentVolumeClaim('  resources:\n    requests:\n      storage: 10Gi\n'),
+        'persistentvolumeclaim/missing-access-modes',
+      );
+      expect(finding.path).toEqual(['spec']);
+    });
+
+    it('treats an empty list the same as a missing one', () => {
+      const finding = expectRule(
+        persistentVolumeClaim('  accessModes: []\n  resources:\n    requests:\n      storage: 10Gi\n'),
+        'persistentvolumeclaim/missing-access-modes',
+      );
+      expect(finding.path).toEqual(['spec', 'accessModes']);
+    });
+
+    it('rejects an unknown mode, suggesting a close match', () => {
+      const finding = expectRule(
+        persistentVolumeClaim(
+          '  accessModes:\n    - ReadWriteOnly\n  resources:\n    requests:\n      storage: 10Gi\n',
+        ),
+        'persistentvolumeclaim/invalid-access-mode',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'accessModes', 0], value: 'ReadWriteOnce' },
+      ]);
+    });
+
+    it('rejects ReadWriteOncePod combined with another mode', () => {
+      expectRule(
+        persistentVolumeClaim(
+          '  accessModes:\n    - ReadWriteOnce\n    - ReadWriteOncePod\n' +
+            '  resources:\n    requests:\n      storage: 10Gi\n',
+        ),
+        'persistentvolumeclaim/read-write-once-pod-exclusive',
+      );
+    });
+
+    it('accepts ReadWriteOncePod alone', () => {
+      expectRules(
+        persistentVolumeClaim(
+          '  accessModes:\n    - ReadWriteOncePod\n  resources:\n    requests:\n      storage: 10Gi\n',
+        ),
+        [],
+      );
+    });
+  });
+
+  describe('selector', () => {
+    it('validates matchLabels keys', () => {
+      const finding = expectRule(withStorage('  selector:\n    matchLabels:\n      "bad key": web\n'), 'meta/invalid-label-key');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchLabels', 'bad key']);
+    });
+
+    it('requires values for the In operator', () => {
+      expectRule(
+        withStorage(
+          '  selector:\n    matchExpressions:\n      - key: tier\n        operator: In\n        values: []\n',
+        ),
+        'persistentvolumeclaim/selector-values-required',
+      );
+    });
+  });
+
+  describe('storage request', () => {
+    it('requires resources.requests.storage', () => {
+      const finding = expectRule(
+        persistentVolumeClaim('  accessModes:\n    - ReadWriteOnce\n'),
+        'persistentvolumeclaim/missing-storage-request',
+      );
+      expect(finding.path).toEqual(['spec', 'resources']);
+    });
+
+    it('rejects a zero storage request', () => {
+      expectRule(
+        persistentVolumeClaim(
+          '  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: "0"\n',
+        ),
+        'persistentvolumeclaim/non-positive-storage-request',
+      );
+    });
+
+    it('leaves a malformed quantity to the schema layer', () => {
+      const yaml = persistentVolumeClaim(
+        '  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 10G1\n',
+      );
+      expectRule(yaml, 'schema/quantity');
+      expectNoRule(yaml, 'persistentvolumeclaim/non-positive-storage-request');
+    });
+  });
+
+  describe('storageClassName', () => {
+    it('rejects one that is not a DNS subdomain', () => {
+      const finding = expectRule(
+        withStorage('  storageClassName: Fast_SSD\n'),
+        'persistentvolumeclaim/invalid-storage-class-name',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'storageClassName'], value: 'fast-ssd' },
+      ]);
+    });
+
+    it('treats an empty storageClassName as none', () => {
+      expectNoRule(withStorage('  storageClassName: ""\n'), 'persistentvolumeclaim/invalid-storage-class-name');
+    });
+  });
+
+  describe('volumeAttributesClassName', () => {
+    it('rejects one that is not a DNS subdomain', () => {
+      expectRule(
+        withStorage('  volumeAttributesClassName: Silver_Tier\n'),
+        'persistentvolumeclaim/invalid-volume-attributes-class-name',
+      );
+    });
+  });
+
+  describe('dataSource and dataSourceRef', () => {
+    it('requires a name', () => {
+      const finding = expectRule(
+        withStorage('  dataSource:\n    kind: PersistentVolumeClaim\n'),
+        'persistentvolumeclaim/missing-data-source-name',
+      );
+      expect(finding.path).toEqual(['spec', 'dataSource']);
+    });
+
+    it('requires a kind', () => {
+      expectRule(
+        withStorage('  dataSource:\n    name: source\n'),
+        'persistentvolumeclaim/missing-data-source-kind',
+      );
+    });
+
+    it('accepts a PersistentVolumeClaim reference with no apiGroup', () => {
+      expectRules(withStorage('  dataSource:\n    kind: PersistentVolumeClaim\n    name: source\n'), []);
+    });
+
+    it('rejects a non-core kind with no apiGroup', () => {
+      expectRule(
+        withStorage('  dataSource:\n    kind: VolumeSnapshot\n    name: source\n'),
+        'persistentvolumeclaim/data-source-kind-requires-api-group',
+      );
+    });
+
+    it('accepts a non-core kind with an apiGroup', () => {
+      expectRules(
+        withStorage(
+          '  dataSource:\n    apiGroup: snapshot.storage.k8s.io\n    kind: VolumeSnapshot\n    name: source\n',
+        ),
+        [],
+      );
+    });
+
+    it('rejects an apiGroup that is not a DNS subdomain', () => {
+      expectRule(
+        withStorage(
+          '  dataSource:\n    apiGroup: Snapshot.Storage\n    kind: VolumeSnapshot\n    name: source\n',
+        ),
+        'persistentvolumeclaim/invalid-data-source-api-group',
+      );
+    });
+
+    it('rejects dataSource set alongside a cross-namespace dataSourceRef', () => {
+      const finding = expectRule(
+        withStorage(
+          '  dataSource:\n    kind: PersistentVolumeClaim\n    name: source\n' +
+            '  dataSourceRef:\n    kind: PersistentVolumeClaim\n    name: source\n    namespace: other\n',
+        ),
+        'persistentvolumeclaim/data-source-with-cross-namespace-ref',
+      );
+      expect(finding.fix?.ops).toEqual([{ op: 'delete', path: ['spec', 'dataSource'] }]);
+    });
+
+    it('rejects dataSource and dataSourceRef naming different objects', () => {
+      expectRule(
+        withStorage(
+          '  dataSource:\n    kind: PersistentVolumeClaim\n    name: a\n' +
+            '  dataSourceRef:\n    kind: PersistentVolumeClaim\n    name: b\n',
+        ),
+        'persistentvolumeclaim/data-source-mismatch',
+      );
+    });
+
+    it('accepts dataSource and dataSourceRef naming the same object', () => {
+      expectRules(
+        withStorage(
+          '  dataSource:\n    kind: PersistentVolumeClaim\n    name: a\n' +
+            '  dataSourceRef:\n    kind: PersistentVolumeClaim\n    name: a\n',
+        ),
+        [],
+      );
+    });
+
+    it('rejects a dataSourceRef.namespace that is not a DNS label', () => {
+      expectRule(
+        withStorage(
+          '  dataSourceRef:\n    kind: PersistentVolumeClaim\n    name: source\n    namespace: Other_NS\n',
+        ),
+        'persistentvolumeclaim/invalid-data-source-namespace',
+      );
+    });
+  });
+
+  it('runs none of the pod spec rules', () => {
+    const ids = ruleIds(persistentVolumeClaim('  containers:\n    - name: web\n      image: a\n'));
+    expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
+    expect(ids).toContain('schema/unknown-field');
+  });
+
+  describe('claim spec reuse', () => {
+    it('checks a StatefulSet volume claim template spec the same way', () => {
+      const yaml = statefulSet(
+        '  volumeClaimTemplates:\n    - metadata:\n        name: data\n      spec:\n' +
+          '        accessModes:\n          - ReadWriteOnly\n        resources:\n          requests:\n            storage: 10Gi\n',
+      );
+      const finding = expectRule(yaml, 'persistentvolumeclaim/invalid-access-mode');
+      expect(finding.path).toEqual(['spec', 'volumeClaimTemplates', 0, 'spec', 'accessModes', 0]);
+    });
+
+    it('checks a Pod ephemeral volume claim template spec the same way', () => {
+      const yaml = pod(
+        '  containers:\n    - name: web\n      image: nginx:1.27\n' +
+          '  volumes:\n    - name: scratch\n      ephemeral:\n        volumeClaimTemplate:\n          spec:\n' +
+          '            accessModes:\n              - ReadWriteOnly\n            resources:\n              requests:\n                storage: 1Gi\n',
+      );
+      const finding = expectRule(yaml, 'persistentvolumeclaim/invalid-access-mode');
+      expect(finding.path).toEqual([
+        'spec',
+        'volumes',
+        0,
+        'ephemeral',
+        'volumeClaimTemplate',
+        'spec',
+        'accessModes',
+        0,
+      ]);
+    });
   });
 });
