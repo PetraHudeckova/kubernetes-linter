@@ -17,6 +17,7 @@ const LABEL_VALUE = /^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$/;
 
 export const DNS_1123_LABEL_MAX = 63;
 export const DNS_1123_SUBDOMAIN_MAX = 253;
+export const DNS_1035_LABEL_MAX = 63;
 export const PORT_NAME_MAX = 15;
 
 export function isDNS1123Label(value: string): FormatCheck {
@@ -47,6 +48,8 @@ export function isDNS1123Subdomain(value: string): FormatCheck {
 
 export function isDNS1035Label(value: string): FormatCheck {
   if (value.length === 0) return { ok: false, reason: 'must not be empty' };
+  if (value.length > DNS_1035_LABEL_MAX)
+    return { ok: false, reason: `must be at most ${DNS_1035_LABEL_MAX} characters` };
   if (!DNS_1035_LABEL.test(value))
     return { ok: false, reason: 'must start with a letter, and contain only lowercase alphanumerics or "-"' };
   return { ok: true };

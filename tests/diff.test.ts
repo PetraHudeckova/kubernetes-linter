@@ -39,7 +39,7 @@ spec:
       image: nginx
       imagePullPolicy: always
 `;
-    const after = applyFix(before, expectRule(before, 'pod/invalid-enum-value').fix!);
+    const after = applyFix(before, expectRule(before, 'enum/invalid-value').fix!);
     const lines = changedLineNumbers(before, after);
 
     expect(lines).toEqual([9]);

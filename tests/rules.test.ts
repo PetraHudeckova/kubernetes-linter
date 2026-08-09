@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
+  VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSet,
   daemonSetWithPodSpec,
@@ -12,6 +13,8 @@ import {
   expectRules,
   pod,
   podWithContainer,
+  ruleIds,
+  service,
   statefulSet,
   statefulSetWithPodSpec,
 } from './helpers.js';
@@ -20,7 +23,7 @@ describe('metadata', () => {
   it('requires a name', () => {
     expectRule(
       'apiVersion: v1\nkind: Pod\nmetadata:\n  labels: {}\nspec:\n  containers:\n    - name: web\n      image: a\n',
-      'pod/missing-name',
+      'meta/missing-name',
     );
   });
 
@@ -34,7 +37,7 @@ describe('metadata', () => {
   it('rejects an uppercase name and suggests a valid one', () => {
     const finding = expectRule(
       pod('  containers:\n    - name: web\n      image: a\n', '  name: Web-Pod\n'),
-      'pod/invalid-name',
+      'meta/invalid-name',
     );
     expect(finding.fix?.ops).toEqual([{ op: 'set', path: ['metadata', 'name'], value: 'web-pod' }]);
   });
@@ -42,7 +45,7 @@ describe('metadata', () => {
   it('rejects a namespace that is not a DNS label', () => {
     expectRule(
       pod('  containers:\n    - name: web\n      image: a\n', '  name: web\n  namespace: My_Namespace\n'),
-      'pod/invalid-namespace',
+      'meta/invalid-namespace',
     );
   });
 
@@ -52,7 +55,7 @@ describe('metadata', () => {
         '  containers:\n    - name: web\n      image: a\n',
         `  name: web\n  labels:\n    app: ${'x'.repeat(64)}\n`,
       ),
-      'pod/invalid-label-value',
+      'meta/invalid-label-value',
     );
   });
 });
@@ -111,14 +114,14 @@ describe('containers', () => {
 
 describe('enums', () => {
   it('corrects a lowercase enum value', () => {
-    const finding = expectRule(podWithContainer('      imagePullPolicy: always\n'), 'pod/invalid-enum-value');
+    const finding = expectRule(podWithContainer('      imagePullPolicy: always\n'), 'enum/invalid-value');
     expect(finding.fix?.ops).toEqual([
       { op: 'set', path: ['spec', 'containers', 0, 'imagePullPolicy'], value: 'Always' },
     ]);
   });
 
   it('rejects an unrelated value without guessing', () => {
-    const finding = expectRule(pod('  restartPolicy: Sometimes\n  containers:\n    - name: web\n      image: a\n'), 'pod/invalid-enum-value');
+    const finding = expectRule(pod('  restartPolicy: Sometimes\n  containers:\n    - name: web\n      image: a\n'), 'enum/invalid-value');
     expect(finding.fix).toBeUndefined();
     expect(finding.explanation).toContain('"Always", "OnFailure", "Never"');
   });
@@ -126,14 +129,14 @@ describe('enums', () => {
   it('applies to nested types wherever they are reused', () => {
     expectRule(
       pod('  containers:\n    - name: web\n      image: a\n  tolerations:\n    - key: k\n      operator: exists\n'),
-      'pod/invalid-enum-value',
+      'enum/invalid-value',
     );
   });
 
   it('accepts an empty value where the API allows it', () => {
     expectNoRule(
       pod('  containers:\n    - name: web\n      image: a\n  volumes:\n    - name: d\n      emptyDir:\n        medium: ""\n'),
-      'pod/invalid-enum-value',
+      'enum/invalid-value',
     );
   });
 });
@@ -593,7 +596,7 @@ describe('deployment', () => {
     it('validates selector label keys', () => {
       expectRule(
         VALID_DEPLOYMENT.replace('      app: web\n  template', '      not a key: web\n  template'),
-        'pod/invalid-label-key',
+        'meta/invalid-label-key',
       );
     });
   });
@@ -638,7 +641,7 @@ describe('deployment', () => {
           '      labels:\n        app: web\n',
           '      labels:\n        app: web\n      annotations:\n        "bad key": x\n',
         ),
-        'pod/invalid-annotation-key',
+        'meta/invalid-annotation-key',
       );
     });
   });
@@ -731,7 +734,7 @@ describe('deployment', () => {
     });
 
     it('leaves an unknown strategy type to the enum rule', () => {
-      expectRule(deployment('  strategy:\n    type: Rolling\n'), 'pod/invalid-enum-value');
+      expectRule(deployment('  strategy:\n    type: Rolling\n'), 'enum/invalid-value');
     });
   });
 
@@ -770,7 +773,7 @@ describe('deployment', () => {
     it('checks the Deployment\'s own name, not the template\'s', () => {
       const finding = expectRule(
         VALID_DEPLOYMENT.replace('  name: web\n', '  name: Web-App\n'),
-        'pod/invalid-name',
+        'meta/invalid-name',
       );
       expect(finding.path).toEqual(['metadata', 'name']);
       expect(finding.message).toContain('Deployment name');
@@ -862,7 +865,7 @@ describe('statefulset', () => {
           '      labels:\n        app: db\n',
           '      labels:\n        app: db\n      annotations:\n        "bad key": x\n',
         ),
-        'pod/invalid-annotation-key',
+        'meta/invalid-annotation-key',
       );
     });
   });
@@ -981,17 +984,17 @@ describe('statefulset', () => {
     });
 
     it('leaves an unknown strategy type to the enum rule', () => {
-      expectRule(statefulSet('  updateStrategy:\n    type: Rolling\n'), 'pod/invalid-enum-value');
+      expectRule(statefulSet('  updateStrategy:\n    type: Rolling\n'), 'enum/invalid-value');
     });
 
     it('checks podManagementPolicy through the enum table', () => {
-      expectRule(statefulSet('  podManagementPolicy: Ordered\n'), 'pod/invalid-enum-value');
+      expectRule(statefulSet('  podManagementPolicy: Ordered\n'), 'enum/invalid-value');
     });
 
     it('checks the claim retention policy through the enum table', () => {
       expectRule(
         statefulSet('  persistentVolumeClaimRetentionPolicy:\n    whenDeleted: delete\n'),
-        'pod/invalid-enum-value',
+        'enum/invalid-value',
       );
     });
   });
@@ -1078,7 +1081,7 @@ describe('statefulset', () => {
     it("checks the StatefulSet's own name, not the template's", () => {
       const finding = expectRule(
         VALID_STATEFULSET.replace('  name: db\n', '  name: DB-Primary\n'),
-        'pod/invalid-name',
+        'meta/invalid-name',
       );
       expect(finding.path).toEqual(['metadata', 'name']);
       expect(finding.message).toContain('StatefulSet name');
@@ -1093,7 +1096,7 @@ describe('statefulset', () => {
       expectRules(VALID_DEPLOYMENT.replace('  name: web\n', '  name: web.api\n'), []);
       expectRule(
         VALID_STATEFULSET.replace('  name: db\n', '  name: db.primary\n'),
-        'pod/invalid-name',
+        'meta/invalid-name',
       );
     });
   });
@@ -1189,7 +1192,7 @@ describe('daemonset', () => {
           '      labels:\n        app: node-exporter\n',
           '      labels:\n        app: node-exporter\n      annotations:\n        "bad key": x\n',
         ),
-        'pod/invalid-annotation-key',
+        'meta/invalid-annotation-key',
       );
     });
   });
@@ -1302,7 +1305,7 @@ describe('daemonset', () => {
     });
 
     it('leaves an unknown strategy type to the enum rule', () => {
-      expectRule(daemonSet('  updateStrategy:\n    type: Rolling\n'), 'pod/invalid-enum-value');
+      expectRule(daemonSet('  updateStrategy:\n    type: Rolling\n'), 'enum/invalid-value');
     });
   });
 
@@ -1373,10 +1376,418 @@ describe('daemonset', () => {
     it("checks the DaemonSet's own name, not the template's", () => {
       const finding = expectRule(
         VALID_DAEMONSET.replace('  name: node-exporter\n', '  name: Node_Exporter\n'),
-        'pod/invalid-name',
+        'meta/invalid-name',
       );
       expect(finding.path).toEqual(['metadata', 'name']);
       expect(finding.message).toContain('DaemonSet name');
     });
+  });
+});
+
+describe('service', () => {
+  it('accepts a valid Service', () => {
+    expectRules(VALID_SERVICE, []);
+  });
+
+  describe('name', () => {
+    it('requires an RFC 1035 label, which may not start with a digit', () => {
+      const finding = expectRule(
+        VALID_SERVICE.replace('  name: web\n', '  name: 8080-proxy\n'),
+        'meta/invalid-name',
+      );
+      expect(finding.message).toContain('Service name');
+      expect(finding.message).toContain('must start with a letter');
+    });
+
+    it('accepts the same name on a Pod, which takes a subdomain', () => {
+      expectNoRule(pod('  containers:\n    - name: web\n      image: a\n', '  name: 8080-proxy\n'), 'meta/invalid-name');
+    });
+  });
+
+  describe('ports', () => {
+    it('requires at least one port', () => {
+      const finding = expectRule(service('  selector:\n    app: web\n'), 'service/missing-ports');
+      expect(finding.message).toContain('ClusterIP');
+    });
+
+    it('reports them even with no spec at all', () => {
+      // ServiceSpec is not required by the schema, but an absent one still
+      // defaults to a ClusterIP Service, which the apiserver rejects for
+      // having no ports.
+      expectRule('apiVersion: v1\nkind: Service\nmetadata:\n  name: web\n', 'service/missing-ports');
+    });
+
+    it('allows a headless Service to expose none', () => {
+      expectRules(service('  clusterIP: None\n  selector:\n    app: web\n'), []);
+    });
+
+    it('allows an ExternalName Service to expose none', () => {
+      expectRules(service('  type: ExternalName\n  externalName: shop.example.com\n'), []);
+    });
+
+    it('requires a name once there is more than one port', () => {
+      const finding = expectRule(
+        service('  ports:\n    - port: 80\n    - port: 443\n      protocol: SCTP\n'),
+        'service/unnamed-port',
+      );
+      expect(finding.path).toEqual(['spec', 'ports', 0]);
+    });
+
+    it('accepts a single unnamed port', () => {
+      expectRules(service('  ports:\n    - port: 80\n'), []);
+    });
+
+    it('rejects a port name that is not a DNS label', () => {
+      expectRule(service('  ports:\n    - name: HTTP\n      port: 80\n'), 'service/invalid-port-name');
+    });
+
+    it('rejects duplicate port names', () => {
+      const finding = expectRule(
+        service('  ports:\n    - name: http\n      port: 80\n    - name: http\n      port: 8080\n'),
+        'service/duplicate-port-name',
+      );
+      expect(finding.message).toContain('entry 1');
+    });
+
+    it('rejects two ports that both default to TCP', () => {
+      // The schema layer keys ServiceSpec.ports on port + protocol, so it only
+      // sees the duplicate when both entries spell the protocol out.
+      const yaml = service('  ports:\n    - name: a\n      port: 80\n    - name: b\n      port: 80\n');
+      expectRule(yaml, 'service/duplicate-port');
+      expectNoRule(yaml, 'schema/duplicate-list-entry');
+    });
+
+    it('leaves a spelled-out duplicate to the schema layer', () => {
+      const yaml = service(
+        '  ports:\n    - name: a\n      port: 80\n      protocol: TCP\n' +
+          '    - name: b\n      port: 80\n      protocol: TCP\n',
+      );
+      expectRule(yaml, 'schema/duplicate-list-entry');
+      expectNoRule(yaml, 'service/duplicate-port');
+    });
+
+    it('accepts the same port number under a different protocol', () => {
+      expectRules(
+        service(
+          '  ports:\n    - name: dns-tcp\n      port: 53\n      protocol: TCP\n' +
+            '    - name: dns-udp\n      port: 53\n      protocol: UDP\n',
+        ),
+        [],
+      );
+    });
+
+    it('rejects a port number outside the 16-bit range', () => {
+      expectRule(service('  ports:\n    - port: 70000\n'), 'service/port-out-of-range');
+    });
+
+    it('rejects a named targetPort that no container port could carry', () => {
+      expectRule(
+        service('  ports:\n    - port: 80\n      targetPort: web--port\n'),
+        'service/invalid-target-port',
+      );
+    });
+
+    it('reads a quoted number as a name and offers to unquote it', () => {
+      const finding = expectRule(
+        service('  ports:\n    - port: 80\n      targetPort: "8080"\n'),
+        'service/quoted-target-port',
+      );
+      expect(finding.fix).toEqual({
+        title: 'Change to the number 8080',
+        safe: true,
+        ops: [{ op: 'set', path: ['spec', 'ports', 0, 'targetPort'], value: 8080 }],
+      });
+    });
+
+    it('rejects an appProtocol that is not a qualified name', () => {
+      expectRule(
+        service('  ports:\n    - port: 80\n      appProtocol: my protocol\n'),
+        'service/invalid-app-protocol',
+      );
+    });
+  });
+
+  describe('node ports', () => {
+    const nodePort = (fragment: string) =>
+      service(`${fragment}  ports:\n    - port: 80\n      nodePort: 30080\n`);
+
+    it('accepts one on a NodePort Service', () => {
+      expectRules(nodePort('  type: NodePort\n'), []);
+    });
+
+    it('rejects one on a ClusterIP Service', () => {
+      const finding = expectRule(nodePort(''), 'service/node-port-not-allowed');
+      expect(finding.fix?.ops).toEqual([{ op: 'set', path: ['spec', 'type'], value: 'NodePort' }]);
+    });
+
+    it('warns about a number outside the default range', () => {
+      const finding = expectRule(
+        service('  type: NodePort\n  ports:\n    - port: 80\n      nodePort: 8080\n'),
+        'service/node-port-outside-default-range',
+      );
+      expect(finding.severity).toBe('warning');
+      expect(finding.message).toContain('30000-32767');
+    });
+
+    it('rejects two ports claiming the same node port', () => {
+      expectRule(
+        service(
+          '  type: NodePort\n  ports:\n    - name: a\n      port: 80\n      nodePort: 30080\n' +
+            '    - name: b\n      port: 443\n      nodePort: 30080\n',
+        ),
+        'service/duplicate-node-port',
+      );
+    });
+  });
+
+  describe('type ExternalName', () => {
+    it('requires externalName', () => {
+      expectRule(service('  type: ExternalName\n'), 'service/missing-external-name');
+    });
+
+    it('requires it to be a hostname', () => {
+      expectRule(
+        service('  type: ExternalName\n  externalName: 10.0.0.1:8080\n'),
+        'service/invalid-external-name',
+      );
+    });
+
+    it('accepts a fully qualified name with a trailing dot', () => {
+      expectRules(service('  type: ExternalName\n  externalName: shop.example.com.\n'), []);
+    });
+
+    it('rejects a cluster IP alongside it', () => {
+      expectRule(
+        service('  type: ExternalName\n  externalName: shop.example.com\n  clusterIP: None\n'),
+        'service/external-name-with-cluster-ip',
+      );
+    });
+
+    it('rejects IP families alongside it', () => {
+      expectRule(
+        service('  type: ExternalName\n  externalName: shop.example.com\n  ipFamilyPolicy: SingleStack\n'),
+        'service/ip-family-not-allowed',
+      );
+    });
+
+    it('warns that a selector does nothing', () => {
+      const finding = expectRule(
+        service('  type: ExternalName\n  externalName: shop.example.com\n  selector:\n    app: web\n'),
+        'service/selector-ignored',
+      );
+      expect(finding.severity).toBe('warning');
+    });
+
+    it('warns that externalName does nothing under another type', () => {
+      const finding = expectRule(
+        service('  externalName: shop.example.com\n  ports:\n    - port: 80\n'),
+        'service/external-name-ignored',
+      );
+      expect(finding.severity).toBe('warning');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'type'], value: 'ExternalName' },
+      ]);
+    });
+  });
+
+  describe('cluster IP', () => {
+    it('rejects one that is not an address', () => {
+      expectRule(service('  clusterIP: 10.0.0.300\n  ports:\n    - port: 80\n'), 'service/invalid-cluster-ip');
+    });
+
+    it('rejects an octet written with a leading zero', () => {
+      // Go stopped reading these as octal, so the apiserver rejects them
+      // rather than quietly resolving 010 to 8.
+      expectRule(service('  clusterIP: 010.1.1.1\n  ports:\n    - port: 80\n'), 'service/invalid-cluster-ip');
+    });
+
+    it('accepts an IPv6 address', () => {
+      expectRules(service('  clusterIP: 2001:db8::1\n  ports:\n    - port: 80\n'), []);
+    });
+
+    it('requires clusterIP to match the first of clusterIPs', () => {
+      const finding = expectRule(
+        service('  clusterIP: 10.0.0.1\n  clusterIPs: ["10.0.0.2"]\n  ports:\n    - port: 80\n'),
+        'service/cluster-ip-mismatch',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'clusterIP'], value: '10.0.0.2' },
+      ]);
+    });
+
+    it('rejects a headless NodePort Service', () => {
+      expectRule(
+        service('  type: NodePort\n  clusterIP: None\n  ports:\n    - port: 80\n'),
+        'service/headless-with-external-type',
+      );
+    });
+  });
+
+  describe('external IPs', () => {
+    it('rejects one that is not an address', () => {
+      expectRule(
+        service('  externalIPs: ["203.0.113"]\n  ports:\n    - port: 80\n'),
+        'service/invalid-external-ip',
+      );
+    });
+
+    it('rejects an address no client outside the node could use', () => {
+      const finding = expectRule(
+        service('  externalIPs: ["127.0.0.1"]\n  ports:\n    - port: 80\n'),
+        'service/special-external-ip',
+      );
+      expect(finding.message).toContain('loopback');
+    });
+
+    it('allows externalTrafficPolicy on a ClusterIP Service that claims one', () => {
+      // ExternallyAccessible() is what the apiserver gates the policy on, and
+      // an external IP makes a ClusterIP Service exactly that.
+      expectRules(
+        service('  externalIPs: ["203.0.113.4"]\n  externalTrafficPolicy: Local\n  ports:\n    - port: 80\n'),
+        [],
+      );
+    });
+  });
+
+  describe('traffic policies', () => {
+    it('rejects externalTrafficPolicy on a plain ClusterIP Service', () => {
+      expectRule(
+        service('  externalTrafficPolicy: Local\n  ports:\n    - port: 80\n'),
+        'service/external-traffic-policy-not-allowed',
+      );
+    });
+
+    it('rejects internalTrafficPolicy on an ExternalName Service', () => {
+      expectRule(
+        service('  type: ExternalName\n  externalName: shop.example.com\n  internalTrafficPolicy: Local\n'),
+        'service/internal-traffic-policy-not-allowed',
+      );
+    });
+
+    it('accepts a health check node port on a Local LoadBalancer', () => {
+      expectRules(
+        service(
+          '  type: LoadBalancer\n  externalTrafficPolicy: Local\n  healthCheckNodePort: 30500\n' +
+            '  ports:\n    - port: 80\n',
+        ),
+        [],
+      );
+    });
+
+    it('rejects one under the Cluster policy, where every node has endpoints', () => {
+      expectRule(
+        service('  type: LoadBalancer\n  healthCheckNodePort: 30500\n  ports:\n    - port: 80\n'),
+        'service/health-check-node-port-not-allowed',
+      );
+    });
+  });
+
+  describe('load balancer fields', () => {
+    it('rejects a source range that is not a CIDR block', () => {
+      const finding = expectRule(
+        service('  type: LoadBalancer\n  loadBalancerSourceRanges: ["203.0.113.4"]\n  ports:\n    - port: 80\n'),
+        'service/invalid-source-range',
+      );
+      expect(finding.message).toContain('prefix length');
+    });
+
+    it('accepts an IPv6 block', () => {
+      expectRules(
+        service('  type: LoadBalancer\n  loadBalancerSourceRanges: ["2001:db8::/64"]\n  ports:\n    - port: 80\n'),
+        [],
+      );
+    });
+
+    it('rejects a load balancer field on a ClusterIP Service', () => {
+      const finding = expectRule(
+        service('  loadBalancerClass: example.com/lb\n  ports:\n    - port: 80\n'),
+        'service/load-balancer-field-not-allowed',
+      );
+      expect(finding.message).toContain('loadBalancerClass');
+    });
+
+    it('rejects a loadBalancerClass that is not a qualified name', () => {
+      expectRule(
+        service('  type: LoadBalancer\n  loadBalancerClass: "not a class"\n  ports:\n    - port: 80\n'),
+        'service/invalid-load-balancer-class',
+      );
+    });
+  });
+
+  describe('session affinity', () => {
+    it('rejects a config block without ClientIP affinity', () => {
+      const finding = expectRule(
+        service('  sessionAffinityConfig:\n    clientIP:\n      timeoutSeconds: 60\n  ports:\n    - port: 80\n'),
+        'service/session-affinity-config-not-allowed',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'sessionAffinity'], value: 'ClientIP' },
+      ]);
+    });
+
+    it('rejects a timeout above a day', () => {
+      expectRule(
+        service(
+          '  sessionAffinity: ClientIP\n  sessionAffinityConfig:\n    clientIP:\n      timeoutSeconds: 90000\n' +
+            '  ports:\n    - port: 80\n',
+        ),
+        'service/invalid-affinity-timeout',
+      );
+    });
+  });
+
+  describe('ip families', () => {
+    it('rejects a misspelled family and offers the right casing', () => {
+      const finding = expectRule(
+        service('  ipFamilies: ["ipv4"]\n  ports:\n    - port: 80\n'),
+        'service/invalid-ip-family',
+      );
+      expect(finding.fix?.safe).toBe(true);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'ipFamilies', 0], value: 'IPv4' },
+      ]);
+    });
+
+    it('rejects the same family twice', () => {
+      expectRule(
+        service('  ipFamilies: ["IPv4", "IPv4"]\n  ports:\n    - port: 80\n'),
+        'service/duplicate-ip-family',
+      );
+    });
+
+    it('rejects two families under a SingleStack policy', () => {
+      expectRule(
+        service('  ipFamilyPolicy: SingleStack\n  ipFamilies: ["IPv4", "IPv6"]\n  ports:\n    - port: 80\n'),
+        'service/ip-family-policy-conflict',
+      );
+    });
+
+    it('accepts a dual-stack pair', () => {
+      expectRules(
+        service('  ipFamilyPolicy: RequireDualStack\n  ipFamilies: ["IPv4", "IPv6"]\n  ports:\n    - port: 80\n'),
+        [],
+      );
+    });
+  });
+
+  describe('an unrecognised type', () => {
+    const yaml = service('  type: clusterip\n  ports:\n    - name: http\n      port: 70000\n');
+
+    it('leaves the type itself to the enum rule', () => {
+      expectRule(yaml, 'enum/invalid-value');
+      expectNoRule(yaml, 'service/missing-ports');
+    });
+
+    it('still checks everything that does not depend on the type', () => {
+      expectRule(yaml, 'service/port-out-of-range');
+    });
+  });
+
+  it('runs none of the pod spec rules', () => {
+    // A Service has no pod template, so the shared rules do not run for it at
+    // all — a "containers" key here is an unknown field, nothing more.
+    const ids = ruleIds(service('  containers:\n    - name: web\n      image: a\n'));
+    expect(ids.every((id) => !id.startsWith('pod/'))).toBe(true);
+    expect(ids).toContain('schema/unknown-field');
   });
 });

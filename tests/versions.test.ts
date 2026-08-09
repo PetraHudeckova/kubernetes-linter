@@ -10,11 +10,13 @@ import { EXAMPLES } from '../src/ui/examples.js';
 import {
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
+  VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSetWithPodSpec,
   deploymentWithPodSpec,
   pod,
   podWithContainer,
+  service,
   statefulSet,
   statefulSetWithPodSpec,
 } from './helpers.js';
@@ -62,11 +64,18 @@ describe('bundled versions', () => {
   it('carries a root for every kind on every version', async () => {
     for (const version of AVAILABLE_VERSIONS) {
       const schema = await schemaFor(version);
-      expect(schema.kinds, version).toEqual(['Pod', 'Deployment', 'StatefulSet', 'DaemonSet']);
+      expect(schema.kinds, version).toEqual([
+        'Pod',
+        'Deployment',
+        'StatefulSet',
+        'DaemonSet',
+        'Service',
+      ]);
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('DaemonSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
+      expect(schema.for('Service')?.apiVersion, version).toBe('v1');
     }
   });
 
@@ -96,6 +105,24 @@ describe('bundled versions', () => {
     }
   });
 
+  it('lints a valid Service cleanly on every version', async () => {
+    // The fifth root, and the only one that shares nothing with the pod
+    // closure — a truncated Service bundle would show up here alone.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_SERVICE, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('checks a Service the same way on every version', async () => {
+    // Nothing this rule module reads arrived after 1.25, so the same manifest
+    // has to produce the same findings across the whole range.
+    const yaml = service('  type: LoadBalancer\n  clusterIP: None\n  ports:\n    - port: 80\n');
+    for (const version of AVAILABLE_VERSIONS) {
+      expect(await ruleIdsAt(version, yaml), version).toEqual(['service/headless-with-external-type']);
+    }
+  });
+
   it('applies version-gated pod spec rules under a DaemonSet template', async () => {
     const yaml = daemonSetWithPodSpec('      hostnameOverride: Not_A_Name\n');
     expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
@@ -115,6 +142,22 @@ describe('bundled versions', () => {
     const yaml = statefulSetWithPodSpec('      hostnameOverride: Not_A_Name\n');
     expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
     expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
+  });
+});
+
+describe('Service fields that came and went', () => {
+  it('accepts spec.trafficDistribution from 1.30', async () => {
+    const yaml = service('  trafficDistribution: PreferClose\n  ports:\n    - port: 80\n');
+
+    expect(await ruleIdsAt('1.29', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.30', yaml)).toEqual([]);
+  });
+
+  it('does not double-report a bad value on a version without the field', async () => {
+    const yaml = service('  trafficDistribution: PreferNear\n  ports:\n    - port: 80\n');
+
+    expect(await ruleIdsAt('1.29', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.30', yaml)).toContain('enum/invalid-value');
   });
 });
 
@@ -187,9 +230,9 @@ describe('fields that came and went', () => {
     // where the field exists and reported as unknown where it does not.
     const yaml = podWithContainer('      lifecycle:\n        stopSignal: SIGNOPE\n');
 
-    expect(await ruleIdsAt('1.33', yaml)).toContain('pod/invalid-enum-value');
+    expect(await ruleIdsAt('1.33', yaml)).toContain('enum/invalid-value');
     expect(await ruleIdsAt('1.32', yaml)).toContain('schema/unknown-field');
-    expect(await ruleIdsAt('1.32', yaml)).not.toContain('pod/invalid-enum-value');
+    expect(await ruleIdsAt('1.32', yaml)).not.toContain('enum/invalid-value');
   });
 });
 

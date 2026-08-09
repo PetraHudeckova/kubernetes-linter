@@ -276,4 +276,30 @@ spec:
             path: /proc
 `,
   },
+  {
+    id: 'service',
+    label: 'A Service with problems',
+    blurb: 'A name that is not a DNS label, a headless Service asking for a node port, and two ports that collide.',
+    yaml: `apiVersion: v1
+kind: Service
+metadata:
+  # A Service name is an RFC 1035 label, so it cannot start with a digit.
+  name: 8080-proxy
+spec:
+  type: NodePort
+  # NodePort builds on a cluster IP, so this Service cannot also be headless.
+  clusterIP: None
+  externalTrafficPolicy: local
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      # Quoted, this names a container port rather than the number 8080.
+      targetPort: "8080"
+      nodePort: 8080
+    - name: http
+      port: 80
+`,
+  },
 ];

@@ -82,7 +82,7 @@ spec:
 
   it('handles flow style', () => {
     const text = 'apiVersion: v1\nkind: Pod\nmetadata: {name: web}\nspec: {containers: [{name: web, image: nginx, imagePullPolicy: always}]}\n';
-    const finding = findings(text).find((entry) => entry.ruleId === 'pod/invalid-enum-value')!;
+    const finding = findings(text).find((entry) => entry.ruleId === 'enum/invalid-value')!;
     expect(text.slice(finding.from, finding.to)).toBe('always');
   });
 });
@@ -136,8 +136,8 @@ describe('bundled examples', () => {
   it('reports the problems the broken example advertises', () => {
     const ids = new Set(lint(EXAMPLES[0]!.yaml).findings.map((finding) => finding.ruleId));
     expect(ids).toContain('schema/unknown-field');
-    expect(ids).toContain('pod/invalid-name');
-    expect(ids).toContain('pod/invalid-enum-value');
+    expect(ids).toContain('meta/invalid-name');
+    expect(ids).toContain('enum/invalid-value');
   });
 
   it('surfaces the conflicts example as contradictions', () => {

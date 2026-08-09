@@ -1,10 +1,10 @@
 # kubernetes-linter
 
-An online linter for Kubernetes **Pod**, **Deployment**, **StatefulSet** and **DaemonSet**
-manifests. Paste YAML, get told what is wrong, why it is wrong, and — where the answer is
-unambiguous — apply the fix with one click.
+An online linter for Kubernetes **Pod**, **Deployment**, **StatefulSet**, **DaemonSet** and
+**Service** manifests. Paste YAML, get told what is wrong, why it is wrong, and — where the
+answer is unambiguous — apply the fix with one click.
 
-The kind comes from the document itself, so a multi-document manifest holding all four is
+The kind comes from the document itself, so a multi-document manifest holding all five is
 linted correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
@@ -45,12 +45,15 @@ schema, which OpenAPI cannot express:
 | Deployment | a selector that does not match the template's labels, an empty selector, `restartPolicy` other than `Always` in the template, `activeDeadlineSeconds` or ephemeral containers in a template, `rollingUpdate` under a `Recreate` strategy, `maxSurge` and `maxUnavailable` both zero, `progressDeadlineSeconds` below `minReadySeconds` |
 | StatefulSet | the same selector and template checks, plus a `serviceName` that is not a DNS label, `rollingUpdate` under an `OnDelete` strategy, a negative `partition` or `ordinals.start`, `maxUnavailable` at zero or above 100%, and volume claim templates that are unnamed, misnamed, duplicated or shadowing a volume of the pod template |
 | DaemonSet | the same selector and template checks, plus a rollout that sets `maxSurge` alongside a non-zero `maxUnavailable` (a DaemonSet does one or the other, never both), both of them at zero, a percentage above 100, a `rollingUpdate` block an `OnDelete` strategy will ignore, and a read-write GCE persistent disk, which cannot be attached to every node |
+| Service | a name that is not an RFC 1035 label, a missing or duplicated port, a `targetPort` that names nothing a container port could be called, a `nodePort` on a type that has none (and one outside the default 30000-32767 range), a headless `NodePort` or `LoadBalancer`, an `ExternalName` with a cluster IP or without a hostname, load balancer and traffic policy fields on a type that ignores them, malformed cluster, external and source-range addresses, and dual-stack families that contradict `ipFamilyPolicy` |
 
-Every row above the last three applies to every controller too: there is one PodSpec
-rule set, addressed relative to whichever kind the document declares, so it reports against
+The PodSpec rows apply to every kind that carries a pod template: there is one PodSpec rule
+set, addressed relative to whichever kind the document declares, so it reports against
 `spec.template.spec` on a controller and `spec` on a Pod. A StatefulSet's `volumeClaimTemplates`
 are folded into that: the controller adds one Pod volume per template, so mounting one is
-recognised as valid even though `spec.template.spec.volumes` never mentions it.
+recognised as valid even though `spec.template.spec.volumes` never mentions it. A Service has
+no pod template at all, so those rules do not run for it — it is checked by the schema, the
+name and label rules every object gets, and its own row above.
 
 Hovering any field shows its type, whether it is required, and its description straight from
 the API specification.
@@ -130,8 +133,10 @@ A new rule pack — security posture, for example — slots in the same way.
 Rules address the PodSpec relatively, through `ctx.at(...)`, so one rule set serves every kind:
 `ctx.at('dnsPolicy')` is `spec.dnsPolicy` on a Pod and `spec.template.spec.dnsPolicy` on a
 Deployment. Adding a kind means a root in `scripts/generate-schema.mjs`, a descriptor in
-`src/lint/kinds.ts` naming those two paths, and any rules unique to it. Each controller keeps
-its own rule module — `rules/deployment.ts`, `rules/statefulset.ts`, `rules/daemonset.ts` —
+`src/lint/kinds.ts` naming those two paths, and any rules unique to it. A kind that carries no
+pod template leaves `podTemplate` out of its descriptor instead, and the PodSpec rules
+(`POD_RULES` in `registry.ts`) are skipped for it. Each kind keeps its own rule module —
+`rules/deployment.ts`, `rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts` —
 since what the apiserver checks beyond the pod template is particular to it.
 
 ## Deployment

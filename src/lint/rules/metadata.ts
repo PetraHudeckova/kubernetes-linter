@@ -1,4 +1,5 @@
 import {
+  isDNS1035Label,
   isDNS1123Label,
   isDNS1123Subdomain,
   isLabelValue,
@@ -22,17 +23,27 @@ const NAME_FORMATS = {
     explanation:
       'This kind is named with a DNS label rather than a subdomain: lowercase letters, digits and "-", at most 63 characters, and no dots — the name ends up in a hostname.',
   },
+  rfc1035: {
+    check: isDNS1035Label,
+    explanation:
+      'This kind is named with an RFC 1035 label: like a DNS label, but it must also start with a letter rather than a digit. The name becomes a DNS record of its own, and a label starting with a digit cannot be told apart from part of an IP address.',
+  },
 } as const;
 
+/**
+ * Checks on the object's own metadata. Every kind has metadata, including one
+ * with no pod template at all, so the rule IDs here are `meta/*` rather than
+ * `pod/*`: none of this is a PodSpec problem.
+ */
 export const metadataRule: Rule = {
-  id: 'pod/metadata',
+  id: 'meta/metadata',
   run(ctx: RuleContext) {
     const metadata = asObject(ctx.doc['metadata']);
 
     if (!metadata) {
       if (ctx.doc['metadata'] === undefined) {
         ctx.report({
-          ruleId: 'pod/missing-metadata',
+          ruleId: 'meta/missing-metadata',
           severity: 'error',
           path: [],
           message: 'Required field "metadata" is missing.',
@@ -50,7 +61,7 @@ export const metadataRule: Rule = {
 
     if (metadata['name'] === undefined && metadata['generateName'] === undefined) {
       ctx.report({
-        ruleId: 'pod/missing-name',
+        ruleId: 'meta/missing-name',
         severity: 'error',
         path: ['metadata'],
         message: 'Required field "metadata.name" is missing.',
@@ -65,7 +76,7 @@ export const metadataRule: Rule = {
       if (!check.ok) {
         const suggestion = suggestName(name);
         ctx.report({
-          ruleId: 'pod/invalid-name',
+          ruleId: 'meta/invalid-name',
           severity: 'error',
           path: ['metadata', 'name'],
           message: `"${name}" is not a valid ${ctx.kind.kind} name: it ${check.reason}.`,
@@ -88,7 +99,7 @@ export const metadataRule: Rule = {
       const check = format.check(generateName.replace(/-$/, ''));
       if (!check.ok) {
         ctx.report({
-          ruleId: 'pod/invalid-generate-name',
+          ruleId: 'meta/invalid-generate-name',
           severity: 'error',
           path: ['metadata', 'generateName'],
           message: `"${generateName}" is not a valid name prefix: it ${check.reason}.`,
@@ -98,7 +109,7 @@ export const metadataRule: Rule = {
       }
       if (name !== undefined) {
         ctx.report({
-          ruleId: 'pod/name-and-generate-name',
+          ruleId: 'meta/name-and-generate-name',
           severity: 'warning',
           path: ['metadata', 'generateName'],
           message: 'Both "name" and "generateName" are set; generateName is ignored.',
@@ -119,7 +130,7 @@ export const metadataRule: Rule = {
       if (!check.ok) {
         const suggestion = suggestName(namespace);
         ctx.report({
-          ruleId: 'pod/invalid-namespace',
+          ruleId: 'meta/invalid-namespace',
           severity: 'error',
           path: ['metadata', 'namespace'],
           message: `"${namespace}" is not a valid namespace: it ${check.reason}.`,
@@ -157,7 +168,7 @@ export function checkKeyedMap(
     const keyCheck = isQualifiedName(key);
     if (!keyCheck.ok) {
       ctx.report({
-        ruleId: `pod/invalid-${noun}-key`,
+        ruleId: `meta/invalid-${noun}-key`,
         severity: 'error',
         path: [...basePath, key],
         anchor: 'key',
@@ -171,7 +182,7 @@ export function checkKeyedMap(
       const valueCheck = isLabelValue(entry);
       if (!valueCheck.ok) {
         ctx.report({
-          ruleId: 'pod/invalid-label-value',
+          ruleId: 'meta/invalid-label-value',
           severity: 'error',
           path: [...basePath, key],
           message: `"${entry}" is not a valid label value: it ${valueCheck.reason}.`,

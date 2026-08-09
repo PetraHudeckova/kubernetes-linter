@@ -104,6 +104,29 @@ const ENUMS: Record<string, EnumSpec> = {
     note: 'Defaults to RollingUpdate.',
   },
 
+  'ServiceSpec.type': {
+    values: ['ClusterIP', 'NodePort', 'LoadBalancer', 'ExternalName'],
+    note: 'Defaults to ClusterIP. Each type but ExternalName builds on the one before it: a NodePort Service also has a cluster IP, and a LoadBalancer Service also has a node port.',
+  },
+  'ServiceSpec.sessionAffinity': { values: ['ClientIP', 'None'], note: 'Defaults to None.' },
+  'ServiceSpec.externalTrafficPolicy': {
+    values: ['Cluster', 'Local'],
+    note: 'Defaults to Cluster.',
+  },
+  'ServiceSpec.internalTrafficPolicy': {
+    values: ['Cluster', 'Local'],
+    note: 'Defaults to Cluster.',
+  },
+  'ServiceSpec.ipFamilyPolicy': {
+    values: ['SingleStack', 'PreferDualStack', 'RequireDualStack'],
+    note: 'Defaults to SingleStack.',
+  },
+  'ServiceSpec.trafficDistribution': {
+    values: ['PreferClose', 'PreferSameZone', 'PreferSameNode'],
+    note: 'PreferSameZone and PreferSameNode were added in 1.33; PreferSameZone is the newer spelling of PreferClose.',
+  },
+  'ServicePort.protocol': { values: ['TCP', 'UDP', 'SCTP'], note: 'Defaults to TCP.' },
+
   'StatefulSetSpec.podManagementPolicy': {
     values: ['OrderedReady', 'Parallel'],
     note: 'Defaults to OrderedReady, which starts and replaces Pods one at a time, in ordinal order.',
@@ -131,10 +154,13 @@ const ENUMS: Record<string, EnumSpec> = {
   'StatefulSetCondition.status': { values: ['True', 'False', 'Unknown'] },
   'PersistentVolumeClaimStatus.phase': { values: ['Pending', 'Bound', 'Lost'] },
   'PersistentVolumeClaimCondition.status': { values: ['True', 'False', 'Unknown'] },
+  'PortStatus.protocol': { values: ['TCP', 'UDP', 'SCTP'] },
+  // meta/v1 Condition, which a ServiceStatus carries.
+  'Condition.status': { values: ['True', 'False', 'Unknown'] },
 };
 
 export const enumRule: Rule = {
-  id: 'pod/enum',
+  id: 'enum/values',
   run(ctx: RuleContext) {
     walkFields(ctx.doc, ctx.schema, ({ path, value, owner, field, property }) => {
       const spec = ENUMS[`${owner}.${field}`];
@@ -148,7 +174,7 @@ export const enumRule: Rule = {
       const allowed = spec.values.map((v) => `"${v}"`).join(', ');
 
       ctx.report({
-        ruleId: 'pod/invalid-enum-value',
+        ruleId: 'enum/invalid-value',
         severity: 'error',
         path,
         message: suggestion
