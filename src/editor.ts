@@ -6,7 +6,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { indentWithTab } from '@codemirror/commands';
-import { schema } from './lint/index.js';
+import type { Schema } from './lint/schema.js';
 import { pathAtOffset } from './lint/parse.js';
 import type { LocatedFinding } from './lint/types.js';
 import { applyFix } from './lint/fix.js';
@@ -48,6 +48,8 @@ export interface EditorHooks {
   onChange(text: string): void;
   /** Findings for the current text, supplied by the host. */
   current(): LocatedFinding[];
+  /** The schema for the version currently selected, read fresh on each hover. */
+  schema(): Schema;
 }
 
 export function createEditor(parent: HTMLElement, initialText: string, hooks: EditorHooks): EditorView {
@@ -66,7 +68,7 @@ export function createEditor(parent: HTMLElement, initialText: string, hooks: Ed
         lintGutter(),
         diagnostics,
         changedLines,
-        fieldTooltip,
+        createFieldTooltip(hooks.schema),
         keymap.of([indentWithTab]),
         EditorView.lineWrapping,
         // Without this the browser spellchecker underlines the whole manifest,
@@ -122,44 +124,46 @@ function toDiagnostic(view: EditorView, finding: LocatedFinding): Diagnostic {
 
 /**
  * Hovering a key explains it using the field's own description from the
- * Kubernetes OpenAPI spec, which ships with the schema bundle.
+ * Kubernetes OpenAPI spec, which ships with the schema bundle. The schema is
+ * read per hover rather than captured, so switching version updates the text.
  */
-const fieldTooltip = hoverTooltip((view, pos) => {
-  const located = pathAtOffset(view.state.doc.toString(), pos);
-  if (!located) return null;
+const createFieldTooltip = (getSchema: () => Schema) =>
+  hoverTooltip((view, pos) => {
+    const located = pathAtOffset(view.state.doc.toString(), pos);
+    if (!located) return null;
 
-  const described = schema.describe(located.path);
-  if (!described) return null;
+    const described = getSchema().describe(located.path);
+    if (!described) return null;
 
-  return {
-    pos: located.from,
-    end: located.to,
-    above: true,
-    create() {
-      const dom = document.createElement('div');
-      dom.className = 'cm-field-tooltip';
+    return {
+      pos: located.from,
+      end: located.to,
+      above: true,
+      create() {
+        const dom = document.createElement('div');
+        dom.className = 'cm-field-tooltip';
 
-      const heading = document.createElement('div');
-      heading.className = 'cm-field-tooltip-head';
-      heading.textContent = `${described.title}: ${described.type}`;
-      dom.append(heading);
+        const heading = document.createElement('div');
+        heading.className = 'cm-field-tooltip-head';
+        heading.textContent = `${described.title}: ${described.type}`;
+        dom.append(heading);
 
-      if (described.required) {
-        const badge = document.createElement('span');
-        badge.className = 'cm-field-tooltip-required';
-        badge.textContent = 'required';
-        heading.append(' ', badge);
-      }
+        if (described.required) {
+          const badge = document.createElement('span');
+          badge.className = 'cm-field-tooltip-required';
+          badge.textContent = 'required';
+          heading.append(' ', badge);
+        }
 
-      if (described.description) {
-        const body = document.createElement('p');
-        body.textContent = described.description;
-        dom.append(body);
-      }
-      return { dom };
-    },
-  };
-});
+        if (described.description) {
+          const body = document.createElement('p');
+          body.textContent = described.description;
+          dom.append(body);
+        }
+        return { dom };
+      },
+    };
+  });
 
 /**
  * Colours come from the page's CSS variables rather than being baked in, so

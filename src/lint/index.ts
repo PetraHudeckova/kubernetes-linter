@@ -1,13 +1,10 @@
-import podSchema from '../schema/pod-v1.36.json' with { type: 'json' };
-import { Schema, lintSchema, isPlainObject, type SchemaBundle } from './schema.js';
+import { lintSchema, isPlainObject, type Schema } from './schema.js';
+import { defaultSchema } from './schemas.js';
 import { parseDocuments, findDuplicateKeys, locate, locateSyntaxError, type ParsedDoc } from './parse.js';
 import { createContext } from './rules/context.js';
 import { RULES } from './rules/registry.js';
 import { applyFix } from './fix.js';
 import type { Finding, LocatedFinding } from './types.js';
-
-export const schema = new Schema(podSchema as unknown as SchemaBundle);
-export const K8S_VERSION = schema.version;
 
 const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 } as const;
 
@@ -20,7 +17,8 @@ export interface LintResult {
   infos: number;
 }
 
-export function lint(text: string): LintResult {
+/** Lint against a specific Kubernetes version; defaults to the newest bundled one. */
+export function lint(text: string, schema: Schema = defaultSchema): LintResult {
   const findings: LocatedFinding[] = [];
   const parsedDocs = parseDocuments(text);
 
@@ -33,7 +31,7 @@ export function lint(text: string): LintResult {
     }
     if (parsed.empty) continue;
 
-    for (const finding of lintOne(parsed)) {
+    for (const finding of lintOne(parsed, schema)) {
       findings.push(locate(parsed, finding, text));
     }
   }
@@ -51,7 +49,7 @@ export function lint(text: string): LintResult {
   };
 }
 
-function lintOne(parsed: ParsedDoc): Finding[] {
+function lintOne(parsed: ParsedDoc, schema: Schema): Finding[] {
   const findings: Finding[] = findDuplicateKeys(parsed.doc);
   const value = parsed.value;
 
@@ -83,12 +81,16 @@ function lintOne(parsed: ParsedDoc): Finding[] {
  * paths that later findings refer to. Runs to a fixed point, with a cap so a
  * pathological input cannot loop forever.
  */
-export function applySafeFixes(text: string, maxPasses = 50): { text: string; applied: number } {
+export function applySafeFixes(
+  text: string,
+  schema: Schema = defaultSchema,
+  maxPasses = 50,
+): { text: string; applied: number } {
   let current = text;
   let applied = 0;
 
   for (let pass = 0; pass < maxPasses; pass++) {
-    const { findings } = lint(current);
+    const { findings } = lint(current, schema);
     const next = findings.find((finding) => finding.fix?.safe);
     if (!next?.fix) break;
 
@@ -103,4 +105,12 @@ export function applySafeFixes(text: string, maxPasses = 50): { text: string; ap
 }
 
 export { applyFix } from './fix.js';
+export {
+  AVAILABLE_VERSIONS,
+  DEFAULT_VERSION,
+  defaultSchema,
+  isKnownVersion,
+  loadSchema,
+} from './schemas.js';
+export type { Schema } from './schema.js';
 export type { Finding, LocatedFinding, Fix, Severity } from './types.js';

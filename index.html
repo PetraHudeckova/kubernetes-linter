@@ -14,7 +14,8 @@
     <header class="masthead">
       <div class="masthead-title">
         <h1>Pod Linter</h1>
-        <span id="version" class="pill"></span>
+        <label class="visually-hidden" for="version">Kubernetes version</label>
+        <select id="version" class="pill pill-select"></select>
       </div>
       <p class="masthead-blurb">
         Paste a Pod manifest. Everything runs in this tab — nothing is uploaded.
@@ -50,8 +51,9 @@
 
     <footer class="footer">
       <p>
-        Checks the Pod schema from the Kubernetes v1.36 OpenAPI specification, plus the
-        validation rules the apiserver applies on top of it. Hover any field to see what it does.
+        Checks the Pod schema from the Kubernetes OpenAPI specification for the version you
+        select above, plus the validation rules the apiserver applies on top of it. Hover any
+        field to see what it does.
       </p>
     </footer>
 

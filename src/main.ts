@@ -1,6 +1,16 @@
 import { EditorView } from 'codemirror';
 import { createEditor, markChangedLines } from './editor.js';
-import { lint, applySafeFixes, K8S_VERSION, type LintResult } from './lint/index.js';
+import {
+  lint,
+  applySafeFixes,
+  loadSchema,
+  isKnownVersion,
+  AVAILABLE_VERSIONS,
+  DEFAULT_VERSION,
+  defaultSchema,
+  type LintResult,
+  type Schema,
+} from './lint/index.js';
 import { renderFindings } from './ui/findings-panel.js';
 import { changedLineNumbers } from './ui/diff.js';
 import { EXAMPLES } from './ui/examples.js';
@@ -19,24 +29,58 @@ const dom = {
   fixAll: required('fix-all') as HTMLButtonElement,
   copy: required('copy') as HTMLButtonElement,
   share: required('share') as HTMLButtonElement,
-  version: required('version'),
+  version: required('version') as HTMLSelectElement,
   status: required('status'),
 };
 
-dom.version.textContent = `Kubernetes v${K8S_VERSION}`;
-
 let result: LintResult = { findings: [], documentCount: 0, errors: 0, warnings: 0, infos: 0 };
+let schema: Schema = defaultSchema;
 const hidden = new Set<Severity>();
 
-const view = createEditor(dom.editor, initialDocument(), {
+const initial = initialState();
+
+const view = createEditor(dom.editor, initial.yaml, {
   onChange: (text) => refresh(text),
   current: () => result.findings,
+  schema: () => schema,
+});
+
+for (const version of AVAILABLE_VERSIONS) {
+  const option = document.createElement('option');
+  option.value = version;
+  option.textContent = `Kubernetes v${version}`;
+  dom.version.append(option);
+}
+dom.version.value = initial.version;
+
+dom.version.addEventListener('change', () => {
+  void selectVersion(dom.version.value);
 });
 
 refresh(view.state.doc.toString());
+if (initial.version !== DEFAULT_VERSION) void selectVersion(initial.version);
+
+/**
+ * Switching version fetches that release's schema chunk. The default version
+ * is bundled, so the common case never touches the network.
+ */
+async function selectVersion(version: string): Promise<void> {
+  dom.version.disabled = true;
+  try {
+    schema = await loadSchema(version);
+    dom.version.value = version;
+    refresh(view.state.doc.toString());
+    setStatus(`Now linting against Kubernetes v${version}.`);
+  } catch {
+    dom.version.value = schema.version;
+    setStatus(`Could not load the schema for Kubernetes v${version}. Still linting against v${schema.version}.`);
+  } finally {
+    dom.version.disabled = false;
+  }
+}
 
 function refresh(text: string): void {
-  result = lint(text);
+  result = lint(text, schema);
   // A status line describes one edit; the next change to the document retires
   // it. Programmatic replacements set a fresh one straight after dispatching.
   clearStatus();
@@ -200,7 +244,11 @@ dom.copy.addEventListener('click', async () => {
 
 dom.share.addEventListener('click', async () => {
   const url = new URL(window.location.href);
-  url.hash = `yaml=${encodeURIComponent(view.state.doc.toString())}`;
+  const fragment = new URLSearchParams({
+    version: schema.version,
+    yaml: view.state.doc.toString(),
+  });
+  url.hash = fragment.toString();
   window.history.replaceState(null, '', url.toString());
   await navigator.clipboard.writeText(url.toString());
   flash(dom.share, 'Link copied');
@@ -224,13 +272,16 @@ function flash(button: HTMLButtonElement, message: string): void {
 
 /**
  * The document travels in the URL fragment, which browsers never send to a
- * server — the manifest stays on the machine that typed it.
+ * server — the manifest stays on the machine that typed it. The version rides
+ * along so a shared link reproduces exactly what the sender saw.
  */
-function initialDocument(): string {
+function initialState(): { yaml: string; version: string } {
   const hash = new URLSearchParams(window.location.hash.slice(1));
-  const shared = hash.get('yaml');
-  if (shared) return shared;
-  return EXAMPLES[0]?.yaml ?? '';
+  const version = hash.get('version');
+  return {
+    yaml: hash.get('yaml') ?? EXAMPLES[0]?.yaml ?? '',
+    version: version && isKnownVersion(version) ? version : DEFAULT_VERSION,
+  };
 }
 
 function required(id: string): HTMLElement {

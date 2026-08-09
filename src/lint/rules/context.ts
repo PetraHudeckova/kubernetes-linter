@@ -19,6 +19,12 @@ export interface RuleContext {
   /** Every container from all three lists, in declaration order. */
   containers: ContainerRef[];
   schema: Schema;
+  /**
+   * Does the selected Kubernetes version know this field? Rules use it before
+   * naming a field in a message or writing one in a fix, since the linter
+   * spans releases in which fields came and went.
+   */
+  supports(path: Path): boolean;
   report(finding: Finding): void;
 }
 
@@ -57,6 +63,7 @@ export function createContext(
     spec,
     containers,
     schema,
+    supports: (path) => schema.describe(path) !== undefined,
     report: (finding) => findings.push(finding),
   };
 }

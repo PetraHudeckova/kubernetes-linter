@@ -124,6 +124,25 @@ body {
   white-space: nowrap;
 }
 
+.pill-select {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding-block: 0.15rem;
+}
+
+.pill-select:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pill-select:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
 .masthead-blurb {
   margin: 0;
   flex: 1;
