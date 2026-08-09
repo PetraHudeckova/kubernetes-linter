@@ -210,14 +210,17 @@ dom.examples.addEventListener('change', (event) => {
 
 dom.fixAll.addEventListener('click', () => {
   const before = view.state.doc.toString();
-  const { text, applied } = applySafeFixes(before);
+  // Both passes take the selected schema: a fix that is right on 1.36 can be
+  // wrong on an older cluster, and the leftover count must describe the same
+  // version the panel is reporting.
+  const { text, applied } = applySafeFixes(before, schema);
 
   if (applied === 0) {
     setStatus('Nothing was changed: every remaining problem needs a decision that only you can make.');
     return;
   }
 
-  const remaining = lint(text);
+  const remaining = lint(text, schema);
   replaceDocument(text, describeOutcome(applied, remaining));
 });
 
