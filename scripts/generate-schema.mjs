@@ -13,9 +13,10 @@
  * a Deployment reaches PodSpec through PodTemplateSpec, and a StatefulSet adds
  * little beyond its own spec plus PersistentVolumeClaim, so the union is only
  * a dozen or so definitions wider than Pod's alone. Service is the one root
- * that shares nothing below metadata, and it still costs under ten definitions.
- * Separate per-kind files would be near-duplicates, and a single bundle also
- * means lint() can switch kinds mid-document without loading anything.
+ * that shares nothing below metadata, and it still costs under ten definitions;
+ * IngressClass costs two, both of them its own. Separate per-kind files would
+ * be near-duplicates, and a single bundle also means lint() can switch kinds
+ * mid-document without loading anything.
  *
  * Usage:
  *   node scripts/generate-schema.mjs                # every supported version
@@ -37,6 +38,7 @@ const ROOTS = {
   DaemonSet: 'io.k8s.api.apps.v1.DaemonSet',
   Service: 'io.k8s.api.core.v1.Service',
   Ingress: 'io.k8s.api.networking.v1.Ingress',
+  IngressClass: 'io.k8s.api.networking.v1.IngressClass',
 };
 
 /**

@@ -132,6 +132,11 @@ const ENUMS: Record<string, EnumSpec> = {
     note: 'There is no default: an Ingress path must say how it is matched. "Prefix" splits both the request path and the rule path on "/" and compares them element by element, so it matches whole path segments rather than a string prefix.',
   },
 
+  'IngressClassParametersReference.scope': {
+    values: ['Cluster', 'Namespace'],
+    note: 'Defaults to Cluster. "Namespace" requires parameters.namespace beside it; "Cluster" forbids it.',
+  },
+
   'StatefulSetSpec.podManagementPolicy': {
     values: ['OrderedReady', 'Parallel'],
     note: 'Defaults to OrderedReady, which starts and replaces Pods one at a time, in ordinal order.',

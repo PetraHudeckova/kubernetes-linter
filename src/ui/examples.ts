@@ -351,4 +351,30 @@ spec:
                   number: 80
 `,
   },
+  {
+    id: 'ingressclass',
+    label: 'An IngressClass with problems',
+    blurb:
+      'A namespace on a cluster-scoped object, a controller that is not domain-prefixed, a parameters reference whose scope and namespace contradict each other, and a default annotation that marks nothing.',
+    yaml: `apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: internal
+  # An IngressClass belongs to no namespace; it is visible from all of them.
+  namespace: ingress-nginx
+  annotations:
+    # The admission plugin compares this to "true" exactly, so this class is
+    # not the default after all.
+    ingressclass.kubernetes.io/is-default-class: "True"
+spec:
+  # A controller is a domain-prefixed path, so a bare name has no owner.
+  controller: ingress-nginx
+  parameters:
+    apiGroup: k8s.example.com
+    kind: IngressParameters
+    name: internal-lb
+    # Scope defaults to "Cluster", which forbids the namespace below it.
+    namespace: ingress-nginx
+`,
+  },
 ];

@@ -10,6 +10,8 @@ import { asObject, asString, type Rule, type RuleContext } from './context.js';
 
 const NAME_DOCS =
   'https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names';
+const NAMESPACE_DOCS =
+  'https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/#not-all-objects-are-in-a-namespace';
 
 /** What `metadata.name` must look like, per the kind's descriptor. */
 const NAME_FORMATS = {
@@ -125,7 +127,24 @@ export const metadataRule: Rule = {
     }
 
     const namespace = asString(metadata['namespace']);
-    if (namespace !== undefined) {
+    if (namespace !== undefined && ctx.kind.clusterScoped) {
+      // A cluster-scoped kind has no namespace to be invalid in, so the format
+      // check below has nothing to say — the field itself is the problem.
+      ctx.report({
+        ruleId: 'meta/namespace-not-allowed',
+        severity: 'error',
+        path: ['metadata', 'namespace'],
+        message: `${ctx.kind.kind} is cluster-scoped, so it cannot be given a namespace.`,
+        explanation:
+          'The apiserver rejects the field with "not allowed on this type": the object is addressed by name alone and is visible from every namespace at once. Deleting it deletes it for the whole cluster.',
+        docsUrl: NAMESPACE_DOCS,
+        fix: {
+          title: 'Remove the namespace',
+          safe: false,
+          ops: [{ op: 'delete', path: ['metadata', 'namespace'] }],
+        },
+      });
+    } else if (namespace !== undefined) {
       const check = isDNS1123Label(namespace);
       if (!check.ok) {
         const suggestion = suggestName(namespace);

@@ -11,10 +11,12 @@ import {
   VALID_DAEMONSET,
   VALID_DEPLOYMENT,
   VALID_INGRESS,
+  VALID_INGRESS_CLASS,
   VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSetWithPodSpec,
   deploymentWithPodSpec,
+  ingressClassParameters,
   ingressPath,
   ingressWithPaths,
   pod,
@@ -74,6 +76,7 @@ describe('bundled versions', () => {
         'DaemonSet',
         'Service',
         'Ingress',
+        'IngressClass',
       ]);
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
@@ -81,6 +84,7 @@ describe('bundled versions', () => {
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
       expect(schema.for('Service')?.apiVersion, version).toBe('v1');
       expect(schema.for('Ingress')?.apiVersion, version).toBe('networking.k8s.io/v1');
+      expect(schema.for('IngressClass')?.apiVersion, version).toBe('networking.k8s.io/v1');
     }
   });
 
@@ -125,6 +129,27 @@ describe('bundled versions', () => {
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_INGRESS, await schemaFor(version));
       expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('lints a valid IngressClass cleanly on every version', async () => {
+    // The seventh root. It reaches only two definitions of its own, so a
+    // regeneration that dropped them would be invisible everywhere but here.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_INGRESS_CLASS, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('checks an IngressClass the same way on every version', async () => {
+    // IngressClass reached v1 in 1.19 and its parameters reference has carried
+    // scope and namespace since before the 1.25 floor, so nothing in its rule
+    // module is version-gated.
+    const yaml = ingressClassParameters('    kind: IngressParameters\n    name: p\n    namespace: ns\n');
+    for (const version of AVAILABLE_VERSIONS) {
+      expect(await ruleIdsAt(version, yaml), version).toEqual([
+        'ingressclass/parameters-namespace-not-allowed',
+      ]);
     }
   });
 

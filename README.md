@@ -1,10 +1,10 @@
 # kubernetes-linter
 
 An online linter for Kubernetes **Pod**, **Deployment**, **StatefulSet**, **DaemonSet**,
-**Service** and **Ingress** manifests. Paste YAML, get told what is wrong, why it is wrong,
-and — where the answer is unambiguous — apply the fix with one click.
+**Service**, **Ingress** and **IngressClass** manifests. Paste YAML, get told what is wrong,
+why it is wrong, and — where the answer is unambiguous — apply the fix with one click.
 
-The kind comes from the document itself, so a multi-document manifest holding all six is
+The kind comes from the document itself, so a multi-document manifest holding all seven is
 linted correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
@@ -47,14 +47,16 @@ schema, which OpenAPI cannot express:
 | DaemonSet | the same selector and template checks, plus a rollout that sets `maxSurge` alongside a non-zero `maxUnavailable` (a DaemonSet does one or the other, never both), both of them at zero, a percentage above 100, a `rollingUpdate` block an `OnDelete` strategy will ignore, and a read-write GCE persistent disk, which cannot be attached to every node |
 | Service | a name that is not an RFC 1035 label, a missing or duplicated port, a `targetPort` that names nothing a container port could be called, a `nodePort` on a type that has none (and one outside the default 30000-32767 range), a headless `NodePort` or `LoadBalancer`, an `ExternalName` with a cluster IP or without a hostname, load balancer and traffic policy fields on a type that ignores them, malformed cluster, external and source-range addresses, and dual-stack families that contradict `ipFamilyPolicy` |
 | Ingress | neither `rules` nor a `defaultBackend`, a rule host that is an IP address or a misplaced wildcard, a rule with no `http` block, a relative path or one containing `//`, `/./`, `/../` or an escaped slash, a host and path routed twice, a backend naming both a Service and a resource or neither, a Service port given as both a name and a number or as neither, a certificate host that no rule routes, and the `kubernetes.io/ingress.class` annotation that `spec.ingressClassName` replaced |
+| IngressClass | a `metadata.namespace` on a cluster-scoped object, a missing `controller` or one that is not a domain-prefixed path, a `parameters` reference whose `scope` and `namespace` contradict each other, an empty `apiGroup`, `kind` or `name`, a `kind` or `name` that could not be a URL path segment, and an `ingressclass.kubernetes.io/is-default-class` annotation whose value is not the exact string the apiserver reads |
 
 The PodSpec rows apply to every kind that carries a pod template: there is one PodSpec rule
 set, addressed relative to whichever kind the document declares, so it reports against
 `spec.template.spec` on a controller and `spec` on a Pod. A StatefulSet's `volumeClaimTemplates`
 are folded into that: the controller adds one Pod volume per template, so mounting one is
-recognised as valid even though `spec.template.spec.volumes` never mentions it. Neither a
-Service nor an Ingress has a pod template at all, so those rules do not run for them — each is
-checked by the schema, the name and label rules every object gets, and its own row above.
+recognised as valid even though `spec.template.spec.volumes` never mentions it. A Service, an
+Ingress and an IngressClass have no pod template at all, so those rules do not run for them —
+each is checked by the schema, the name and label rules every object gets, and its own row
+above.
 
 Hovering any field shows its type, whether it is required, and its description straight from
 the API specification.
@@ -136,10 +138,12 @@ Rules address the PodSpec relatively, through `ctx.at(...)`, so one rule set ser
 Deployment. Adding a kind means a root in `scripts/generate-schema.mjs`, a descriptor in
 `src/lint/kinds.ts` naming those two paths, and any rules unique to it. A kind that carries no
 pod template leaves `podTemplate` out of its descriptor instead, and the PodSpec rules
-(`POD_RULES` in `registry.ts`) are skipped for it. Each kind keeps its own rule module —
-`rules/deployment.ts`, `rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts`,
-`rules/ingress.ts` — since what the apiserver checks beyond the pod template is particular
-to it.
+(`POD_RULES` in `registry.ts`) are skipped for it; one that lives outside namespaces sets
+`clusterScoped` there too, which is what makes `metadata.namespace` an error rather than a
+name to validate. Each kind keeps its own rule module — `rules/deployment.ts`,
+`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts`, `rules/ingress.ts`,
+`rules/ingressclass.ts` — since what the apiserver checks beyond the pod template is
+particular to it.
 
 ## Deployment
 
