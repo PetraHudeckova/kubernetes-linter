@@ -163,3 +163,52 @@ ${templateSpecFragment}      containers:
 export function statefulSetWithPodSpec(templateSpecFragment: string): string {
   return statefulSet('', templateSpecFragment);
 }
+
+/** A minimal valid DaemonSet that individual tests mutate. */
+export const VALID_DAEMONSET = `apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.8.2
+`;
+
+/**
+ * Build a DaemonSet from a fragment of DaemonSetSpec, with a selector and
+ * template that already agree so only the fragment under test misbehaves.
+ * Fragments are indented two spaces, matching `pod()`.
+ */
+export function daemonSet(specFragment: string, templateSpecFragment = ''): string {
+  return `apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+spec:
+${specFragment}  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+${templateSpecFragment}      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.8.2
+`;
+}
+
+/** A DaemonSet whose pod template carries the given PodSpec fragment. */
+export function daemonSetWithPodSpec(templateSpecFragment: string): string {
+  return daemonSet('', templateSpecFragment);
+}
