@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kubernetes Pod Linter</title>
+    <meta
+      name="description"
+      content="Lint Kubernetes Pod manifests in your browser. Explains what is wrong and offers a fix. Nothing is uploaded."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%98%B8%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead-title">
+        <h1>Pod Linter</h1>
+        <span id="version" class="pill"></span>
+      </div>
+      <p class="masthead-blurb">
+        Paste a Pod manifest. Everything runs in this tab — nothing is uploaded.
+      </p>
+      <a class="masthead-link" href="https://github.com/PetraHudeckova/kubernetes-linter">Source ↗</a>
+    </header>
+
+    <main class="layout">
+      <section class="pane pane-editor">
+        <div class="toolbar">
+          <label class="visually-hidden" for="examples">Load an example</label>
+          <select id="examples" class="select">
+            <option value="">Load an example…</option>
+          </select>
+          <div class="toolbar-actions">
+            <button type="button" id="fix-all" class="button">Apply all safe fixes</button>
+            <button type="button" id="copy" class="button">Copy</button>
+            <button type="button" id="share" class="button">Share link</button>
+          </div>
+        </div>
+        <div id="editor" class="editor"></div>
+      </section>
+
+      <section class="pane pane-findings">
+        <div class="findings-head">
+          <p id="summary" class="summary"></p>
+          <div id="filters" class="filters"></div>
+        </div>
+        <div id="findings" class="findings"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        Checks the Pod schema from the Kubernetes v1.36 OpenAPI specification, plus the
+        validation rules the apiserver applies on top of it. Hover any field to see what it does.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
