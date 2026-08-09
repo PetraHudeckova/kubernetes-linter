@@ -1,10 +1,10 @@
 # kubernetes-linter
 
 An online linter for Kubernetes **Pod**, **Deployment**, **StatefulSet**, **DaemonSet**,
-**Service**, **Ingress** and **IngressClass** manifests. Paste YAML, get told what is wrong,
-why it is wrong, and — where the answer is unambiguous — apply the fix with one click.
+**Job**, **Service**, **Ingress** and **IngressClass** manifests. Paste YAML, get told what is
+wrong, why it is wrong, and — where the answer is unambiguous — apply the fix with one click.
 
-The kind comes from the document itself, so a multi-document manifest holding all seven is
+The kind comes from the document itself, so a multi-document manifest holding all eight is
 linted correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
@@ -45,6 +45,7 @@ schema, which OpenAPI cannot express:
 | Deployment | a selector that does not match the template's labels, an empty selector, `restartPolicy` other than `Always` in the template, `activeDeadlineSeconds` or ephemeral containers in a template, `rollingUpdate` under a `Recreate` strategy, `maxSurge` and `maxUnavailable` both zero, `progressDeadlineSeconds` below `minReadySeconds` |
 | StatefulSet | the same selector and template checks, plus a `serviceName` that is not a DNS label, `rollingUpdate` under an `OnDelete` strategy, a negative `partition` or `ordinals.start`, `maxUnavailable` at zero or above 100%, and volume claim templates that are unnamed, misnamed, duplicated or shadowing a volume of the pod template |
 | DaemonSet | the same selector and template checks, plus a rollout that sets `maxSurge` alongside a non-zero `maxUnavailable` (a DaemonSet does one or the other, never both), both of them at zero, a percentage above 100, a `rollingUpdate` block an `OnDelete` strategy will ignore, and a read-write GCE persistent disk, which cannot be attached to every node |
+| Job | a `restartPolicy` the template leaves to default to `Always` (a Job accepts only `OnFailure` or `Never`), a hand-written `selector` without `manualSelector`, one that does not match the template's labels, negative counters, an `Indexed` Job without `completions` or whose name cannot become a Pod hostname once the index is appended, per-index fields on a `NonIndexed` one, `maxFailedIndexes` without `backoffLimitPerIndex` or above `completions`, a pod failure policy rule matching on both or neither of `onExitCodes` and `onPodConditions`, exit codes that are empty, unsorted, repeated or zero under `In`, a `containerName` no container answers to, `FailIndex` without per-index retries, `podReplacementPolicy` other than `Failed` beside a failure policy, a success policy on a `NonIndexed` Job or with rules that say nothing, a malformed `succeededIndexes`, and a `managedBy` that is not a domain-prefixed path |
 | Service | a name that is not an RFC 1035 label, a missing or duplicated port, a `targetPort` that names nothing a container port could be called, a `nodePort` on a type that has none (and one outside the default 30000-32767 range), a headless `NodePort` or `LoadBalancer`, an `ExternalName` with a cluster IP or without a hostname, load balancer and traffic policy fields on a type that ignores them, malformed cluster, external and source-range addresses, and dual-stack families that contradict `ipFamilyPolicy` |
 | Ingress | neither `rules` nor a `defaultBackend`, a rule host that is an IP address or a misplaced wildcard, a rule with no `http` block, a relative path or one containing `//`, `/./`, `/../` or an escaped slash, a host and path routed twice, a backend naming both a Service and a resource or neither, a Service port given as both a name and a number or as neither, a certificate host that no rule routes, and the `kubernetes.io/ingress.class` annotation that `spec.ingressClassName` replaced |
 | IngressClass | a `metadata.namespace` on a cluster-scoped object, a missing `controller` or one that is not a domain-prefixed path, a `parameters` reference whose `scope` and `namespace` contradict each other, an empty `apiGroup`, `kind` or `name`, a `kind` or `name` that could not be a URL path segment, and an `ingressclass.kubernetes.io/is-default-class` annotation whose value is not the exact string the apiserver reads |
@@ -103,7 +104,7 @@ npm run gen:schema -- 1.37    # add a single new one
 
 `src/lint/schemas.ts` discovers the files with `import.meta.glob`, so a new
 `src/schema/k8s-1.37.json` shows up in the picker with no other code change. Vite emits each
-as its own chunk (38-48 KB brotli), fetched only when that version is selected; the default
+as its own chunk (42-54 KB brotli), fetched only when that version is selected; the default
 version is bundled, so the first load makes no extra request. To move the default, change the
 static import in that file.
 
@@ -141,9 +142,9 @@ pod template leaves `podTemplate` out of its descriptor instead, and the PodSpec
 (`POD_RULES` in `registry.ts`) are skipped for it; one that lives outside namespaces sets
 `clusterScoped` there too, which is what makes `metadata.namespace` an error rather than a
 name to validate. Each kind keeps its own rule module — `rules/deployment.ts`,
-`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/service.ts`, `rules/ingress.ts`,
-`rules/ingressclass.ts` — since what the apiserver checks beyond the pod template is
-particular to it.
+`rules/statefulset.ts`, `rules/daemonset.ts`, `rules/job.ts`, `rules/service.ts`,
+`rules/ingress.ts`, `rules/ingressclass.ts` — since what the apiserver checks beyond the pod
+template is particular to it.
 
 ## Deployment
 

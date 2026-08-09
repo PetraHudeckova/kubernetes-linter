@@ -14,6 +14,8 @@ const DNS_1035_LABEL = /^[a-z]([-a-z0-9]*[a-z0-9])?$/;
 const C_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const QUALIFIED_NAME = /^([A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?)$/;
 const LABEL_VALUE = /^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$/;
+/** Characters an HTTP path may carry, RFC 3986 as apimachinery reads it. */
+const HTTP_PATH = /^[A-Za-z0-9/\-._~%!$&'()*+,;=:]+$/;
 
 export const DNS_1123_LABEL_MAX = 63;
 export const DNS_1123_SUBDOMAIN_MAX = 253;
@@ -60,6 +62,33 @@ export function isWildcardDNS1123Subdomain(value: string): FormatCheck {
       ok: false,
       reason: 'must start with "*." followed by a valid DNS subdomain, such as "*.example.com"',
     };
+  }
+  return { ok: true };
+}
+
+/**
+ * A domain the implementation owns, a "/", and a name below it —
+ * "kueue.x-k8s.io/multikueue". IsDomainPrefixedPath in
+ * k8s.io/apimachinery/pkg/api/validation: everything before the first "/" is a
+ * DNS subdomain, everything after it need only be spellable in a URL path.
+ *
+ * `rules/ingressclass.ts` checks the same format inline, since it reports each
+ * of the three ways it can fail under its own rule id.
+ */
+export function isDomainPrefixedPath(value: string): FormatCheck {
+  const slash = value.indexOf('/');
+  const domain = slash === -1 ? '' : value.slice(0, slash);
+  const path = slash === -1 ? '' : value.slice(slash + 1);
+
+  if (domain === '' || path === '') {
+    return { ok: false, reason: 'must be a domain-prefixed path, such as "acme.io/foo"' };
+  }
+
+  const check = isDNS1123Subdomain(domain);
+  if (!check.ok) return { ok: false, reason: `has a domain prefix that ${check.reason}` };
+
+  if (!HTTP_PATH.test(path)) {
+    return { ok: false, reason: 'must end in a name spellable in a URL path' };
   }
   return { ok: true };
 }

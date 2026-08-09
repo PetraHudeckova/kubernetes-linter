@@ -377,4 +377,40 @@ spec:
     namespace: ingress-nginx
 `,
   },
+  {
+    id: 'job',
+    label: 'A Job with problems',
+    blurb:
+      'A pod template that restarts forever, a selector the apiserver generates itself, per-index settings without indexes, and a failure policy matching on nothing.',
+    yaml: `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nightly-import
+spec:
+  completions: 8
+  parallelism: 4
+  backoffLimit: -1
+  # Per-index retries only exist for an Indexed Job; this one is NonIndexed.
+  backoffLimitPerIndex: 2
+  selector:
+    matchLabels:
+      job-name: nightly-import
+  podFailurePolicy:
+    rules:
+      # A rule matches on an exit code or on a Pod condition, never on neither.
+      - action: Ignore
+      - action: FailJob
+        onExitCodes:
+          containerName: importer
+          operator: In
+          values: [137, 42]
+  template:
+    spec:
+      # restartPolicy defaults to Always, which a Job cannot use.
+      containers:
+        - name: import
+          image: importer:1.2.0
+          args: ["--source", "s3://exports/nightly"]
+`,
+  },
 ];

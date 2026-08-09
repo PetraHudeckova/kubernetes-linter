@@ -4,6 +4,7 @@ import {
   VALID_DEPLOYMENT,
   VALID_INGRESS,
   VALID_INGRESS_CLASS,
+  VALID_JOB,
   VALID_SERVICE,
   VALID_STATEFULSET,
   daemonSet,
@@ -18,6 +19,8 @@ import {
   ingressClassParameters,
   ingressPath,
   ingressWithPaths,
+  job,
+  jobWithPodSpec,
   pod,
   podWithContainer,
   ruleIds,
@@ -1387,6 +1390,397 @@ describe('daemonset', () => {
       );
       expect(finding.path).toEqual(['metadata', 'name']);
       expect(finding.message).toContain('DaemonSet name');
+    });
+  });
+});
+
+describe('job', () => {
+  it('accepts a minimal Job', () => {
+    expectRules(VALID_JOB, []);
+  });
+
+  describe('selector', () => {
+    it('rejects a hand-written selector without manualSelector', () => {
+      const finding = expectRule(
+        job('  selector:\n    matchLabels:\n      app: import\n'),
+        'job/generated-selector',
+      );
+      expect(finding.path).toEqual(['spec', 'selector']);
+      expect(finding.fix?.ops).toEqual([{ op: 'delete', path: ['spec', 'selector'] }]);
+    });
+
+    it('accepts one that says it is manual, if the template agrees', () => {
+      expectRules(
+        job('  manualSelector: true\n  selector:\n    matchLabels:\n      app: import\n').replace(
+          '  template:\n    spec:\n',
+          '  template:\n    metadata:\n      labels:\n        app: import\n    spec:\n',
+        ),
+        [],
+      );
+    });
+
+    it('reports a template label that contradicts a manual selector', () => {
+      const finding = expectRule(
+        job('  manualSelector: true\n  selector:\n    matchLabels:\n      app: import\n'),
+        'job/selector-mismatch',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'metadata', 'labels']);
+    });
+
+    it('checks operator and values consistency under the job namespace', () => {
+      const yaml = job(
+        '  manualSelector: true\n  selector:\n    matchExpressions:\n' +
+          '      - key: app\n        operator: Exists\n        values: [import]\n',
+      );
+      const finding = expectRule(yaml, 'job/selector-values-forbidden');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0, 'values']);
+    });
+  });
+
+  describe('pod template', () => {
+    it('rejects a template with no restartPolicy, since the default is Always', () => {
+      const finding = expectRule(
+        VALID_JOB.replace('      restartPolicy: Never\n', ''),
+        'job/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec']);
+      expect(finding.fix?.safe).toBe(false);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'template', 'spec', 'restartPolicy'], value: 'Never' },
+      ]);
+    });
+
+    it('rejects a restartPolicy written with no value, which decodes the same way', () => {
+      const finding = expectRule(
+        VALID_JOB.replace('restartPolicy: Never', 'restartPolicy:'),
+        'job/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'restartPolicy']);
+    });
+
+    it('rejects restartPolicy Always', () => {
+      const finding = expectRule(
+        VALID_JOB.replace('restartPolicy: Never', 'restartPolicy: Always'),
+        'job/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'restartPolicy']);
+    });
+
+    it('accepts OnFailure', () => {
+      expectRules(VALID_JOB.replace('restartPolicy: Never', 'restartPolicy: OnFailure'), []);
+    });
+
+    it('leaves an unrecognised restart policy to the enum rule', () => {
+      expectRules(VALID_JOB.replace('restartPolicy: Never', 'restartPolicy: never'), [
+        'enum/invalid-value',
+      ]);
+    });
+
+    it('requires Never beside a pod failure policy', () => {
+      const yaml = job(
+        '  podFailurePolicy:\n    rules:\n      - action: Ignore\n' +
+          '        onPodConditions:\n          - type: DisruptionTarget\n            status: "True"\n',
+      ).replace('restartPolicy: Never', 'restartPolicy: OnFailure');
+      const finding = expectRule(yaml, 'job/restart-policy-with-pod-failure-policy');
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'restartPolicy']);
+    });
+
+    it('accepts OnFailure beside backoffLimitPerIndex, which no release rejects', () => {
+      const yaml = job(
+        '  completionMode: Indexed\n  completions: 4\n  backoffLimitPerIndex: 1\n',
+      ).replace('restartPolicy: Never', 'restartPolicy: OnFailure');
+      expectRules(yaml, []);
+    });
+
+    it('forbids ephemeral containers', () => {
+      const finding = expectRule(
+        jobWithPodSpec('      ephemeralContainers:\n        - name: debug\n          image: busybox\n'),
+        'job/template-ephemeral-containers',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'ephemeralContainers']);
+    });
+  });
+
+  describe('counters', () => {
+    it('rejects negative values', () => {
+      for (const [field, ruleId] of [
+        ['parallelism', 'job/negative-parallelism'],
+        ['completions', 'job/negative-completions'],
+        ['backoffLimit', 'job/negative-backoff-limit'],
+        ['activeDeadlineSeconds', 'job/negative-active-deadline'],
+        ['ttlSecondsAfterFinished', 'job/negative-ttl'],
+      ] as const) {
+        const finding = expectRule(job(`  ${field}: -1\n`), ruleId);
+        expect(finding.path).toEqual(['spec', field]);
+      }
+    });
+
+    it('accepts zero, which is how a Job is suspended by hand', () => {
+      expectRules(job('  parallelism: 0\n'), []);
+    });
+  });
+
+  describe('completion mode', () => {
+    it('requires completions in Indexed mode', () => {
+      const finding = expectRule(job('  completionMode: Indexed\n'), 'job/indexed-without-completions');
+      expect(finding.path).toEqual(['spec']);
+    });
+
+    it('requires Indexed mode for the per-index fields', () => {
+      const finding = expectRule(
+        job('  completions: 4\n  backoffLimitPerIndex: 1\n'),
+        'job/requires-indexed-completion',
+      );
+      expect(finding.path).toEqual(['spec', 'backoffLimitPerIndex']);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'completionMode'], value: 'Indexed' },
+      ]);
+    });
+
+    it('requires backoffLimitPerIndex beside maxFailedIndexes', () => {
+      expectRule(
+        job('  completionMode: Indexed\n  completions: 4\n  maxFailedIndexes: 2\n'),
+        'job/max-failed-indexes-without-backoff-limit-per-index',
+      );
+    });
+
+    it('rejects more failed indexes than there are indexes', () => {
+      const finding = expectRule(
+        job(
+          '  completionMode: Indexed\n  completions: 4\n  backoffLimitPerIndex: 1\n  maxFailedIndexes: 5\n',
+        ),
+        'job/max-failed-indexes-over-completions',
+      );
+      expect(finding.message).toContain('(4)');
+    });
+
+    it('rejects a name too long for the highest Pod hostname', () => {
+      const name = 'a'.repeat(62);
+      const finding = expectRule(
+        job('  completionMode: Indexed\n  completions: 100\n').replace('name: import', `name: ${name}`),
+        'job/invalid-indexed-pod-hostname',
+      );
+      expect(finding.path).toEqual(['metadata', 'name']);
+      expect(finding.message).toContain(`${name}-99`);
+    });
+
+    it('rejects a dotted name, which is a valid Job name but not a hostname', () => {
+      // metadata.ts is happy — a Job is named with a DNS subdomain — so this is
+      // the rule's alone to catch.
+      expectRules(
+        job('  completionMode: Indexed\n  completions: 4\n').replace('name: import', 'name: nightly.import'),
+        ['job/invalid-indexed-pod-hostname'],
+      );
+    });
+
+    it('says nothing about a name that is short enough', () => {
+      expectRules(job('  completionMode: Indexed\n  completions: 100\n'), []);
+    });
+
+    it('leaves an unrecognised completion mode to the enum rule', () => {
+      // Without knowing which mode was meant there is nothing to say about the
+      // fields that depend on it.
+      expectRules(job('  completionMode: indexed\n  backoffLimitPerIndex: 1\n'), [
+        'enum/invalid-value',
+      ]);
+    });
+  });
+
+  describe('pod failure policy', () => {
+    const policy = (rulesFragment: string) =>
+      job(`  podFailurePolicy:\n    rules:\n${rulesFragment}`);
+
+    it('accepts a rule matching on exit codes', () => {
+      expectRules(
+        policy(
+          '      - action: FailJob\n        onExitCodes:\n          operator: In\n          values: [1, 42]\n',
+        ),
+        [],
+      );
+    });
+
+    it('rejects a rule matching on both onExitCodes and onPodConditions', () => {
+      const finding = expectRule(
+        policy(
+          '      - action: Ignore\n        onExitCodes:\n          operator: In\n          values: [1]\n' +
+            '        onPodConditions:\n          - type: DisruptionTarget\n            status: "True"\n',
+        ),
+        'job/pod-failure-policy-rule-target',
+      );
+      expect(finding.path).toEqual(['spec', 'podFailurePolicy', 'rules', 0]);
+      expect(finding.message).toContain('both');
+    });
+
+    it('rejects a rule matching on neither', () => {
+      const finding = expectRule(policy('      - action: Count\n'), 'job/pod-failure-policy-rule-target');
+      expect(finding.message).toContain('nothing');
+    });
+
+    it('requires backoffLimitPerIndex for the FailIndex action', () => {
+      const finding = expectRule(
+        policy('      - action: FailIndex\n        onExitCodes:\n          operator: In\n          values: [1]\n'),
+        'job/fail-index-without-backoff-limit-per-index',
+      );
+      expect(finding.path).toEqual(['spec', 'podFailurePolicy', 'rules', 0, 'action']);
+    });
+
+    it('reports a containerName the template does not declare, with a fix', () => {
+      const finding = expectRule(
+        policy(
+          '      - action: FailJob\n        onExitCodes:\n          containerName: imports\n' +
+            '          operator: In\n          values: [1]\n',
+        ),
+        'job/unknown-exit-code-container',
+      );
+      expect(finding.fix?.safe).toBe(true);
+      expect(finding.fix?.ops).toEqual([
+        {
+          op: 'set',
+          path: ['spec', 'podFailurePolicy', 'rules', 0, 'onExitCodes', 'containerName'],
+          value: 'import',
+        },
+      ]);
+    });
+
+    it('accepts a containerName that names an init container', () => {
+      const yaml = job(
+        '  podFailurePolicy:\n    rules:\n      - action: FailJob\n        onExitCodes:\n' +
+          '          containerName: setup\n          operator: In\n          values: [1]\n',
+        '      initContainers:\n        - name: setup\n          image: busybox:1.36\n',
+      );
+      expectRules(yaml, []);
+    });
+
+    it('rejects an empty exit code list', () => {
+      expectRule(
+        policy('      - action: FailJob\n        onExitCodes:\n          operator: In\n          values: []\n'),
+        'job/empty-exit-codes',
+      );
+    });
+
+    it('rejects exit code 0 with the In operator', () => {
+      const finding = expectRule(
+        policy('      - action: FailJob\n        onExitCodes:\n          operator: In\n          values: [0, 1]\n'),
+        'job/zero-exit-code',
+      );
+      expect(finding.path).toEqual([
+        'spec', 'podFailurePolicy', 'rules', 0, 'onExitCodes', 'values', 0,
+      ]);
+    });
+
+    it('accepts exit code 0 with NotIn, which is how "any failure" is written', () => {
+      expectRules(
+        policy('      - action: FailJob\n        onExitCodes:\n          operator: NotIn\n          values: [0]\n'),
+        [],
+      );
+    });
+
+    it('rejects a repeated exit code', () => {
+      expectRule(
+        policy('      - action: FailJob\n        onExitCodes:\n          operator: In\n          values: [1, 1]\n'),
+        'job/duplicate-exit-code',
+      );
+    });
+
+    it('requires the exit codes to be sorted', () => {
+      const finding = expectRule(
+        policy('      - action: FailJob\n        onExitCodes:\n          operator: In\n          values: [42, 1]\n'),
+        'job/unordered-exit-codes',
+      );
+      expect(finding.path).toEqual(['spec', 'podFailurePolicy', 'rules', 0, 'onExitCodes', 'values']);
+    });
+
+    it('checks a pod condition type as a qualified name', () => {
+      expectRule(
+        policy('      - action: Ignore\n        onPodConditions:\n          - type: "Disruption Target"\n            status: "True"\n'),
+        'job/invalid-pod-condition-type',
+      );
+    });
+  });
+
+  describe('pod replacement policy', () => {
+    it('allows only Failed beside a pod failure policy', () => {
+      const yaml = job(
+        '  podReplacementPolicy: TerminatingOrFailed\n  podFailurePolicy:\n    rules:\n' +
+          '      - action: Ignore\n        onPodConditions:\n          - type: DisruptionTarget\n            status: "True"\n',
+      );
+      const finding = expectRule(yaml, 'job/pod-replacement-policy-with-failure-policy');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'podReplacementPolicy'], value: 'Failed' },
+      ]);
+    });
+
+    it('accepts either value without one', () => {
+      expectRules(job('  podReplacementPolicy: TerminatingOrFailed\n'), []);
+    });
+  });
+
+  describe('success policy', () => {
+    const success = (rulesFragment: string, specFragment = '  completions: 4\n') =>
+      job(`  completionMode: Indexed\n${specFragment}  successPolicy:\n    rules:\n${rulesFragment}`);
+
+    it('accepts a rule naming indexes', () => {
+      expectRules(success('      - succeededIndexes: "0,2-3"\n'), []);
+    });
+
+    it('requires Indexed completion', () => {
+      const finding = expectRule(
+        job('  successPolicy:\n    rules:\n      - succeededCount: 1\n'),
+        'job/requires-indexed-completion',
+      );
+      expect(finding.path).toEqual(['spec', 'successPolicy']);
+    });
+
+    it('requires at least one rule', () => {
+      expectRule(
+        job('  completionMode: Indexed\n  completions: 4\n  successPolicy:\n    rules: []\n'),
+        'job/empty-success-policy',
+      );
+    });
+
+    it('requires a rule to say something', () => {
+      const finding = expectRule(success('      - {}\n'), 'job/success-policy-rule-empty');
+      expect(finding.path).toEqual(['spec', 'successPolicy', 'rules', 0]);
+    });
+
+    it('rejects an index above the completion count', () => {
+      const finding = expectRule(
+        success('      - succeededIndexes: "0,4"\n'),
+        'job/invalid-succeeded-indexes',
+      );
+      expect(finding.message).toContain('not below completions (4)');
+    });
+
+    it('rejects indexes out of order', () => {
+      expectRule(success('      - succeededIndexes: "2,1"\n'), 'job/invalid-succeeded-indexes');
+    });
+
+    it('rejects a count above the completion count', () => {
+      const finding = expectRule(success('      - succeededCount: 9\n'), 'job/invalid-succeeded-count');
+      expect(finding.message).toContain('completions (4)');
+    });
+
+    it('rejects a count above the indexes the rule itself names', () => {
+      const finding = expectRule(
+        success('      - succeededIndexes: "0-1"\n        succeededCount: 3\n'),
+        'job/invalid-succeeded-count',
+      );
+      expect(finding.message).toContain('2 indexes');
+    });
+  });
+
+  describe('managedBy', () => {
+    it('accepts a domain-prefixed path', () => {
+      expectRules(job('  managedBy: kueue.x-k8s.io/multikueue\n'), []);
+    });
+
+    it('rejects a bare name', () => {
+      const finding = expectRule(job('  managedBy: kueue\n'), 'job/invalid-managed-by');
+      expect(finding.path).toEqual(['spec', 'managedBy']);
+    });
+
+    it('rejects one that is too long', () => {
+      expectRule(job(`  managedBy: example.com/${'a'.repeat(60)}\n`), 'job/managed-by-too-long');
     });
   });
 });
