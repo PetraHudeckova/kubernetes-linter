@@ -21,6 +21,14 @@
   --ok: #1f7a45;
   --change-highlight: rgb(31 122 69 / 12%);
 
+  --active-line: rgb(47 111 235 / 6%);
+  --selection: rgb(47 111 235 / 20%);
+  --syntax-key: #1b4fb8;
+  --syntax-string: #0a6b52;
+  --syntax-literal: #8a3a00;
+  --syntax-comment: #6b7480;
+  --syntax-punctuation: #6b7480;
+
   --radius: 10px;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 4%);
 }
@@ -45,6 +53,14 @@
     --info-soft: #172b33;
     --ok: #7ee2a8;
     --change-highlight: rgb(126 226 168 / 12%);
+
+    --active-line: rgb(122 165 247 / 8%);
+    --selection: rgb(122 165 247 / 28%);
+    --syntax-key: #9dc1ff;
+    --syntax-string: #8fd6b4;
+    --syntax-literal: #e5c07b;
+    --syntax-comment: #7d8794;
+    --syntax-punctuation: #98a2ae;
 
     --shadow: none;
   }
