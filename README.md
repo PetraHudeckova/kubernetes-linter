@@ -48,13 +48,16 @@ misconfiguration.
 
 A fix edits the parsed YAML syntax tree and re-serialises it, so **comments, key order,
 quoting style, blank lines and indentation survive**. Every fix shows a diff before you
-apply it.
+apply it, and once applied the rewritten lines are highlighted in the editor so you can see
+exactly what moved.
 
 Fixes are either *safe* — an unambiguous correction such as a misspelled key or an enum value
 that differs only in case — or ones that guess at intent, such as raising a limit to match a
 request. **Apply all safe fixes** runs only the first kind, re-linting after each edit so that
 corrections cascade: fixing `contaienrs:` to `containers:` reveals everything underneath it,
-which is then fixed in turn.
+which is then fixed in turn. Because of that cascade the problem count can go *up* after a
+run — that is progress, not a regression, so the outcome is spelled out in words rather than
+left to the counter.
 
 ## Development
 

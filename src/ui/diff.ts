@@ -1,10 +1,15 @@
-export type DiffLine = { kind: 'context' | 'added' | 'removed'; text: string; number?: number };
+export type DiffKind = 'context' | 'added' | 'removed';
+export type DiffLine = { kind: DiffKind; text: string; number?: number };
 
-/**
- * Line diff via longest common subsequence, trimmed to the neighbourhood of
- * each change so a fix preview shows the edit rather than the whole manifest.
- */
-export function diffLines(before: string, after: string, context = 2): DiffLine[] {
+interface AlignedLine {
+  kind: DiffKind;
+  text: string;
+  /** 0-based line index in the "after" text; only set for kept and added lines. */
+  after?: number;
+}
+
+/** Align two texts line by line via longest common subsequence. */
+function align(before: string, after: string): AlignedLine[] {
   const a = before.split('\n');
   const b = after.split('\n');
 
@@ -13,30 +18,54 @@ export function diffLines(before: string, after: string, context = 2): DiffLine[
   );
   for (let i = a.length - 1; i >= 0; i--) {
     for (let j = b.length - 1; j >= 0; j--) {
-      lengths[i]![j] = a[i] === b[j] ? lengths[i + 1]![j + 1]! + 1 : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
+      lengths[i]![j] =
+        a[i] === b[j] ? lengths[i + 1]![j + 1]! + 1 : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
     }
   }
 
-  const all: DiffLine[] = [];
+  const result: AlignedLine[] = [];
   let i = 0;
   let j = 0;
   while (i < a.length && j < b.length) {
     if (a[i] === b[j]) {
-      all.push({ kind: 'context', text: a[i]!, number: i + 1 });
+      result.push({ kind: 'context', text: a[i]!, after: j });
       i++;
       j++;
     } else if (lengths[i + 1]![j]! >= lengths[i]![j + 1]!) {
-      all.push({ kind: 'removed', text: a[i]!, number: i + 1 });
+      result.push({ kind: 'removed', text: a[i]! });
       i++;
     } else {
-      all.push({ kind: 'added', text: b[j]! });
+      result.push({ kind: 'added', text: b[j]!, after: j });
       j++;
     }
   }
-  while (i < a.length) all.push({ kind: 'removed', text: a[i]!, number: ++i });
-  while (j < b.length) all.push({ kind: 'added', text: b[j++]! });
+  while (i < a.length) result.push({ kind: 'removed', text: a[i++]! });
+  while (j < b.length) result.push({ kind: 'added', text: b[j]!, after: j++ });
 
-  return trimToChanges(all, context);
+  return result;
+}
+
+/**
+ * Line diff trimmed to the neighbourhood of each change, so a fix preview
+ * shows the edit rather than the whole manifest.
+ */
+export function diffLines(before: string, after: string, context = 2): DiffLine[] {
+  const aligned = align(before, after).map<DiffLine>((line) => ({
+    kind: line.kind,
+    text: line.text,
+    ...(line.after !== undefined ? { number: line.after + 1 } : {}),
+  }));
+  return trimToChanges(aligned, context);
+}
+
+/**
+ * Which lines of `after` are new or rewritten, 1-based. Used to highlight what
+ * a fix actually changed, so applying one is visible in the editor.
+ */
+export function changedLineNumbers(before: string, after: string): number[] {
+  return align(before, after)
+    .filter((line) => line.kind === 'added' && line.after !== undefined)
+    .map((line) => line.after! + 1);
 }
 
 function trimToChanges(lines: DiffLine[], context: number): DiffLine[] {

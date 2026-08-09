@@ -19,6 +19,7 @@
   --info: #29607a;
   --info-soft: #e7f2f7;
   --ok: #1f7a45;
+  --change-highlight: rgb(31 122 69 / 12%);
 
   --radius: 10px;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 4%);
@@ -43,6 +44,7 @@
     --info: #8ecae6;
     --info-soft: #172b33;
     --ok: #7ee2a8;
+    --change-highlight: rgb(126 226 168 / 12%);
 
     --shadow: none;
   }
@@ -190,6 +192,27 @@ body {
 .button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.status {
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.status[hidden] {
+  display: none;
+}
+
+.status::before {
+  content: '✓';
+  margin-right: 0.4rem;
+  font-weight: 700;
+  color: var(--ok);
 }
 
 .editor {
