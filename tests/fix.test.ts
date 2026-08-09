@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFix, applySafeFixes, lint } from '../src/lint/index.js';
+import { applyFix, applySafeFixes, lint, loadSchema } from '../src/lint/index.js';
 import { applyOps, detectFormat } from '../src/lint/fix.js';
 import { expectRule } from './helpers.js';
 
@@ -235,6 +235,29 @@ spec:
     expect(applied).toBe(1);
     expect(text).toContain('name: Bad-Name');
     expect(lint(text).findings.map((finding) => finding.ruleId)).toEqual(['pod/invalid-name']);
+  });
+
+  it('fixes against the version it is given, not the default', async () => {
+    // hostnameOverride arrived in 1.34, so the "did you mean" rename exists
+    // only from then on. Fixing a 1.33 document against the default schema
+    // would write a field that cluster rejects.
+    const before = `apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+spec:
+  hostnameOverrid: web
+  containers:
+    - name: web
+      image: nginx
+`;
+    const onNew = applySafeFixes(before, await loadSchema('1.36'));
+    expect(onNew.applied).toBe(1);
+    expect(onNew.text).toContain('hostnameOverride: web');
+
+    const onOld = applySafeFixes(before, await loadSchema('1.33'));
+    expect(onOld.applied).toBe(0);
+    expect(onOld.text).toBe(before);
   });
 });
 
