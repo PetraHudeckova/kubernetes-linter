@@ -95,7 +95,7 @@ Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must b
 `ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
 wrong node on a Deployment and silently close the gate on every version.
 
-### Kinds (Pod, Deployment, StatefulSet)
+### Kinds (Pod, Deployment, StatefulSet, DaemonSet)
 
 The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
 reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
@@ -118,25 +118,28 @@ as undeclared.
 **Rules address the PodSpec relatively.** `ctx.at(...)` prefixes `specPath`, `ctx.meta(...)`
 prefixes `podMetadataPath`, and `ctx.field(...)` renders a dotted name for a message. There are
 no `['spec', …]` literals left in `rules/`; reintroducing one silently breaks Deployment. The
-deliberate exceptions are `rules/deployment.ts` and `rules/statefulset.ts`, which address
-`spec.selector`, `spec.strategy`, `spec.updateStrategy` and the like — fields of the controller
-itself, not of any pod spec.
+deliberate exceptions are `rules/deployment.ts`, `rules/statefulset.ts` and
+`rules/daemonset.ts`, which address `spec.selector`, `spec.strategy`, `spec.updateStrategy` and
+the like — fields of the controller itself, not of any pod spec.
 
 `ctx.doc` is the document root (used by `metadata.ts` and `enums.ts`); `ctx.spec` is the
 PodSpec wherever this kind keeps it. `ContainerRef.path` already carries the prefix, so any
 rule built on `ctx.containers` is kind-correct for free.
 
 Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
-and `deployment/*` / `statefulset/*` for checks on the controller itself. `Schema` is per
+and `deployment/*` / `statefulset/*` / `daemonset/*` for checks on the controller itself. `Schema` is per
 version and holds every root; `Schema.for(kind)` returns the `KindSchema` view that both lint
 layers actually use.
 
-Each controller keeps its **own** rule module rather than sharing one: `deployment.ts` and
-`statefulset.ts` overlap on the selector and template checks, but the two upstream validators
-are separate, diverge in wording and in what they forbid, and are versioned independently — so
-they are kept independent here too, and a change to one is not a change to the other.
+Each controller keeps its **own** rule module rather than sharing one: `deployment.ts`,
+`statefulset.ts` and `daemonset.ts` overlap on the selector and template checks, but the three
+upstream validators are separate, diverge in wording and in what they forbid, and are versioned
+independently — so they are kept independent here too, and a change to one is not a change to
+the others. The rollout checks are where that pays off: a Deployment rejects `maxSurge` and
+`maxUnavailable` both at zero, a DaemonSet rejects that *and* the two both non-zero (it either
+drains a node or surges onto it, never both), and a StatefulSet has no `maxSurge` at all.
 
-**Adding a fourth kind**, in order:
+**Adding a further kind**, in order:
 
 1. A root in `ROOTS` (`scripts/generate-schema.mjs`), then `npm run gen:schema` to regenerate
    and commit *every* version bundle. Generation throws if the definition is missing from any
@@ -152,9 +155,11 @@ they are kept independent here too, and a change to one is not a change to the o
 4. Enum entries in `rules/enums.ts` for the controller's own enum fields, keyed
    `<Definition>.<field>` — upstream's OpenAPI carries no enum values, so the table is hand-kept.
 5. Tests and copy: helpers and a valid manifest in `tests/helpers.ts`, pinned across versions in
-   `tests/versions.test.ts` (which also asserts `schema.kinds` exactly, so its list changes), an
-   example appended to `EXAMPLES` (`src/ui/examples.ts`), and the kind names in `index.html` and
-   in the `lint/unsupported-kind` explanation in `src/lint/index.ts`.
+   `tests/versions.test.ts` (which also asserts `schema.kinds` exactly, so its list changes,
+   as does `tests/schema.test.ts` — it pins that list and uses a kind the bundle does *not*
+   carry to exercise `lint/unsupported-kind`), an example appended to `EXAMPLES`
+   (`src/ui/examples.ts`), and the kind names in `index.html`, `README.md` and in the
+   `lint/unsupported-kind` explanation in `src/lint/index.ts`.
 
 The reusable machinery — the schema walk, `walkFields`,
 `enums.ts`, `fix.ts`, `parse.ts`, `k8s/*` — is kind-agnostic; `walkFields` keys on the resolved
@@ -163,10 +168,11 @@ The reusable machinery — the schema walk, `walkFields`,
 ### Schema bundles
 
 `scripts/generate-schema.mjs` unions the transitive `$ref` closure of every root in `ROOTS`
-(153 defs at 1.36, ~270 KB on disk, ~37 KB brotli) and writes `{ k8sVersion, source, generatedAt,
+(159 defs at 1.36, ~285 KB on disk, ~43 KB brotli) and writes `{ k8sVersion, source, generatedAt,
 roots, definitions }`. One file per version rather than one per kind: the Deployment closure is
-a near-total superset of Pod's and the StatefulSet one adds little beyond `PersistentVolumeClaim`,
-so per-kind files would be near-duplicates. API descriptions are kept on purpose — they are what the hover tooltip and
+a near-total superset of Pod's, the StatefulSet one adds little beyond `PersistentVolumeClaim`,
+and the DaemonSet one adds only its own spec and update strategy, so per-kind files would be
+near-duplicates. API descriptions are kept on purpose — they are what the hover tooltip and
 most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,

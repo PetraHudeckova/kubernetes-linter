@@ -5,9 +5,189 @@
  "roots": {
   "Pod": "io.k8s.api.core.v1.Pod",
   "Deployment": "io.k8s.api.apps.v1.Deployment",
-  "StatefulSet": "io.k8s.api.apps.v1.StatefulSet"
+  "StatefulSet": "io.k8s.api.apps.v1.StatefulSet",
+  "DaemonSet": "io.k8s.api.apps.v1.DaemonSet"
  },
  "definitions": {
+  "io.k8s.api.apps.v1.DaemonSet": {
+   "description": "DaemonSet represents the configuration of a daemon set.",
+   "properties": {
+    "apiVersion": {
+     "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+     "type": "string"
+    },
+    "kind": {
+     "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
+     "description": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    "spec": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DaemonSetSpec",
+     "description": "The desired behavior of this daemon set. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
+    },
+    "status": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DaemonSetStatus",
+     "description": "The current status of this daemon set. This data may be out of date by some window of time. Populated by the system. Read-only. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status"
+    }
+   },
+   "type": "object",
+   "x-kubernetes-group-version-kind": [
+    {
+     "group": "apps",
+     "kind": "DaemonSet",
+     "version": "v1"
+    }
+   ]
+  },
+  "io.k8s.api.apps.v1.DaemonSetCondition": {
+   "description": "DaemonSetCondition describes the state of a DaemonSet at a certain point.",
+   "properties": {
+    "lastTransitionTime": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+     "description": "Last time the condition transitioned from one status to another."
+    },
+    "message": {
+     "description": "A human readable message indicating details about the transition.",
+     "type": "string"
+    },
+    "reason": {
+     "description": "The reason for the condition's last transition.",
+     "type": "string"
+    },
+    "status": {
+     "description": "Status of the condition, one of True, False, Unknown.",
+     "type": "string"
+    },
+    "type": {
+     "description": "Type of DaemonSet condition.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "status"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DaemonSetSpec": {
+   "description": "DaemonSetSpec is the specification of a daemon set.",
+   "properties": {
+    "minReadySeconds": {
+     "description": "The minimum number of seconds for which a newly created DaemonSet pod should be ready without any of its container crashing, for it to be considered available. Defaults to 0 (pod will be considered available as soon as it is ready).",
+     "format": "int32",
+     "type": "integer"
+    },
+    "revisionHistoryLimit": {
+     "description": "The number of old history to retain to allow rollback. This is a pointer to distinguish between explicit zero and not specified. Defaults to 10.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "selector": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
+     "description": "A label query over pods that are managed by the daemon set. Must match in order to be controlled. It must match the pod template's labels. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors"
+    },
+    "template": {
+     "$ref": "#/definitions/io.k8s.api.core.v1.PodTemplateSpec",
+     "description": "An object that describes the pod that will be created. The DaemonSet will create exactly one copy of this pod on every node that matches the template's node selector (or on every node if no node selector is specified). The only allowed template.spec.restartPolicy value is \"Always\". More info: https://kubernetes.io/docs/concepts/workloads/controllers/replicationcontroller#pod-template"
+    },
+    "updateStrategy": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.DaemonSetUpdateStrategy",
+     "description": "An update strategy to replace existing DaemonSet pods with new pods."
+    }
+   },
+   "required": [
+    "selector",
+    "template"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DaemonSetStatus": {
+   "description": "DaemonSetStatus represents the current status of a daemon set.",
+   "properties": {
+    "collisionCount": {
+     "description": "Count of hash collisions for the DaemonSet. The DaemonSet controller uses this field as a collision avoidance mechanism when it needs to create the name for the newest ControllerRevision.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "conditions": {
+     "description": "Represents the latest available observations of a DaemonSet's current state.",
+     "items": {
+      "$ref": "#/definitions/io.k8s.api.apps.v1.DaemonSetCondition"
+     },
+     "type": "array",
+     "x-kubernetes-list-map-keys": [
+      "type"
+     ],
+     "x-kubernetes-list-type": "map",
+     "x-kubernetes-patch-merge-key": "type",
+     "x-kubernetes-patch-strategy": "merge"
+    },
+    "currentNumberScheduled": {
+     "description": "The number of nodes that are running at least 1 daemon pod and are supposed to run the daemon pod. More info: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/",
+     "format": "int32",
+     "type": "integer"
+    },
+    "desiredNumberScheduled": {
+     "description": "The total number of nodes that should be running the daemon pod (including nodes correctly running the daemon pod). More info: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/",
+     "format": "int32",
+     "type": "integer"
+    },
+    "numberAvailable": {
+     "description": "The number of nodes that should be running the daemon pod and have one or more of the daemon pod running and available (ready for at least spec.minReadySeconds)",
+     "format": "int32",
+     "type": "integer"
+    },
+    "numberMisscheduled": {
+     "description": "The number of nodes that are running the daemon pod, but are not supposed to run the daemon pod. More info: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/",
+     "format": "int32",
+     "type": "integer"
+    },
+    "numberReady": {
+     "description": "numberReady is the number of nodes that should be running the daemon pod and have one or more of the daemon pod running with a Ready Condition.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "numberUnavailable": {
+     "description": "The number of nodes that should be running the daemon pod and have none of the daemon pod running and available (ready for at least spec.minReadySeconds)",
+     "format": "int32",
+     "type": "integer"
+    },
+    "observedGeneration": {
+     "description": "The most recent generation observed by the daemon set controller.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "updatedNumberScheduled": {
+     "description": "The total number of nodes that are running updated daemon pod",
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "currentNumberScheduled",
+    "numberMisscheduled",
+    "desiredNumberScheduled",
+    "numberReady"
+   ],
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.DaemonSetUpdateStrategy": {
+   "description": "DaemonSetUpdateStrategy is a struct used to control the update strategy for a DaemonSet.",
+   "properties": {
+    "rollingUpdate": {
+     "$ref": "#/definitions/io.k8s.api.apps.v1.RollingUpdateDaemonSet",
+     "description": "Rolling update config params. Present only if type = \"RollingUpdate\"."
+    },
+    "type": {
+     "description": "Type of daemon set update. Can be \"RollingUpdate\" or \"OnDelete\". Default is RollingUpdate.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
   "io.k8s.api.apps.v1.Deployment": {
    "description": "Deployment enables declarative updates for Pods and ReplicaSets.",
    "properties": {
@@ -191,6 +371,20 @@
     "type": {
      "description": "Type of deployment. Can be \"Recreate\" or \"RollingUpdate\". Default is RollingUpdate.",
      "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "io.k8s.api.apps.v1.RollingUpdateDaemonSet": {
+   "description": "Spec to control the desired behavior of daemon set rolling update.",
+   "properties": {
+    "maxSurge": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of nodes with an existing available DaemonSet pod that can have an updated DaemonSet pod during during an update. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). This can not be 0 if MaxUnavailable is 0. Absolute number is calculated from percentage by rounding up to a minimum of 1. Default value is 0. Example: when this is set to 30%, at most 30% of the total number of nodes that should be running the daemon pod (i.e. status.desiredNumberScheduled) can have their a new pod created before the old pod is marked as deleted. The update starts by launching new pods on 30% of nodes. Once an updated pod is available (Ready for at least minReadySeconds) the old DaemonSet pod on that node is marked deleted. If the old pod becomes unavailable for any reason (Ready transitions to false, is evicted, or is drained) an updated pod is immediatedly created on that node without considering surge limits. Allowing surge implies the possibility that the resources consumed by the daemonset on any given node can double if the readiness check fails, and so resource intensive daemonsets should take into account that they may cause evictions during disruption."
+    },
+    "maxUnavailable": {
+     "$ref": "#/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
+     "description": "The maximum number of DaemonSet pods that can be unavailable during the update. Value can be an absolute number (ex: 5) or a percentage of total number of DaemonSet pods at the start of the update (ex: 10%). Absolute number is calculated from percentage by rounding up. This cannot be 0 if MaxSurge is 0 Default value is 1. Example: when this is set to 30%, at most 30% of the total number of nodes that should be running the daemon pod (i.e. status.desiredNumberScheduled) can have their pods stopped for an update at any given time. The update starts by stopping at most 30% of those DaemonSet pods and then brings up new DaemonSet pods in their place. Once the new pods are available, it then proceeds onto other DaemonSet pods, thus ensuring that at least 70% of original number of DaemonSet pods are available at all times during the update."
     }
    },
    "type": "object"

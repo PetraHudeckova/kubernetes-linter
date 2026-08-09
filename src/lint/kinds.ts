@@ -1,5 +1,6 @@
 import type { Path } from './types.js';
 import type { Rule } from './rules/context.js';
+import { daemonSetRule } from './rules/daemonset.js';
 import { deploymentRule } from './rules/deployment.js';
 import { statefulSetRule } from './rules/statefulset.js';
 
@@ -55,6 +56,12 @@ export const KINDS: Record<string, KindDescriptor> = {
     nameFormat: 'label',
     claimTemplatesPath: ['spec', 'volumeClaimTemplates'],
     rules: [statefulSetRule],
+  },
+  DaemonSet: {
+    kind: 'DaemonSet',
+    specPath: ['spec', 'template', 'spec'],
+    podMetadataPath: ['spec', 'template', 'metadata'],
+    rules: [daemonSetRule],
   },
 };
 

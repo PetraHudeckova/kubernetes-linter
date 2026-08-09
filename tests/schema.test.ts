@@ -119,10 +119,10 @@ describe('schema conformance', () => {
     });
 
     it('skips the rules for a kind it does not carry, with an explanation', () => {
-      const result = findings(VALID_POD.replace('kind: Pod', 'kind: DaemonSet'));
+      const result = findings(VALID_POD.replace('kind: Pod', 'kind: Job'));
       expect(result.map((finding) => finding.ruleId)).toEqual(['lint/unsupported-kind']);
       expect(result[0]?.severity).toBe('info');
-      expect(result[0]?.message).toContain('Pod, Deployment and StatefulSet');
+      expect(result[0]?.message).toContain('Pod, Deployment, StatefulSet and DaemonSet');
     });
 
     it('expects the group-prefixed apiVersion for a Deployment', () => {
@@ -223,7 +223,7 @@ describe('field descriptions', () => {
   });
 
   it('carries a root for every supported kind', () => {
-    expect(schema.kinds).toEqual(['Pod', 'Deployment', 'StatefulSet']);
-    expect(schema.for('DaemonSet')).toBeUndefined();
+    expect(schema.kinds).toEqual(['Pod', 'Deployment', 'StatefulSet', 'DaemonSet']);
+    expect(schema.for('Job')).toBeUndefined();
   });
 });

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  VALID_DAEMONSET,
   VALID_DEPLOYMENT,
   VALID_STATEFULSET,
+  daemonSet,
+  daemonSetWithPodSpec,
   deployment,
   deploymentWithPodSpec,
   expectNoRule,
@@ -1092,6 +1095,288 @@ describe('statefulset', () => {
         VALID_STATEFULSET.replace('  name: db\n', '  name: db.primary\n'),
         'pod/invalid-name',
       );
+    });
+  });
+});
+
+describe('daemonset', () => {
+  it('accepts a minimal DaemonSet', () => {
+    expectRules(VALID_DAEMONSET, []);
+  });
+
+  it('has no replica count, so the schema layer reports one', () => {
+    // The mistake a DaemonSet invites most: its Pod count is the number of
+    // matching nodes, so DaemonSetSpec has no such field.
+    const finding = expectRule(daemonSet('  replicas: 3\n'), 'schema/unknown-field');
+    expect(finding.path).toEqual(['spec', 'replicas']);
+  });
+
+  describe('selector', () => {
+    it('rejects an empty selector', () => {
+      const finding = expectRule(
+        VALID_DAEMONSET.replace(
+          '    matchLabels:\n      app: node-exporter\n',
+          '    matchLabels: {}\n',
+        ),
+        'daemonset/empty-selector',
+      );
+      expect(finding.path).toEqual(['spec', 'selector']);
+    });
+
+    it('reports a template label that contradicts the selector', () => {
+      const finding = expectRule(
+        VALID_DAEMONSET.replace('      app: node-exporter\n  template', '      app: metrics\n  template'),
+        'daemonset/selector-mismatch',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'metadata', 'labels', 'app']);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'template', 'metadata', 'labels', 'app'], value: 'metrics' },
+      ]);
+    });
+
+    it('evaluates matchExpressions against the template labels', () => {
+      const yaml = VALID_DAEMONSET.replace(
+        '    matchLabels:\n      app: node-exporter\n',
+        '    matchExpressions:\n      - key: app\n        operator: In\n        values: [api, worker]\n',
+      );
+      const finding = expectRule(yaml, 'daemonset/selector-mismatch');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0]);
+    });
+
+    it('checks operator and values consistency under the daemonset namespace', () => {
+      const yaml = VALID_DAEMONSET.replace(
+        '    matchLabels:\n      app: node-exporter\n',
+        '    matchExpressions:\n      - key: app\n        operator: Exists\n        values: [node-exporter]\n',
+      );
+      const finding = expectRule(yaml, 'daemonset/selector-values-forbidden');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0, 'values']);
+    });
+  });
+
+  describe('pod template', () => {
+    it('requires restartPolicy Always, with a safe fix', () => {
+      const finding = expectRule(
+        daemonSetWithPodSpec('      restartPolicy: OnFailure\n'),
+        'daemonset/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'restartPolicy']);
+      expect(finding.fix?.safe).toBe(true);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'template', 'spec', 'restartPolicy'], value: 'Always' },
+      ]);
+    });
+
+    it('forbids activeDeadlineSeconds', () => {
+      const finding = expectRule(
+        daemonSetWithPodSpec('      activeDeadlineSeconds: 600\n'),
+        'daemonset/template-active-deadline',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'template', 'spec', 'activeDeadlineSeconds'] },
+      ]);
+    });
+
+    it('forbids ephemeral containers', () => {
+      expectRule(
+        daemonSetWithPodSpec('      ephemeralContainers:\n        - name: debug\n          image: busybox\n'),
+        'daemonset/template-ephemeral-containers',
+      );
+    });
+
+    it('validates template annotation keys', () => {
+      expectRule(
+        VALID_DAEMONSET.replace(
+          '      labels:\n        app: node-exporter\n',
+          '      labels:\n        app: node-exporter\n      annotations:\n        "bad key": x\n',
+        ),
+        'pod/invalid-annotation-key',
+      );
+    });
+  });
+
+  describe('counters', () => {
+    it('rejects a negative minReadySeconds', () => {
+      const finding = expectRule(
+        daemonSet('  minReadySeconds: -5\n'),
+        'daemonset/negative-min-ready-seconds',
+      );
+      expect(finding.path).toEqual(['spec', 'minReadySeconds']);
+    });
+
+    it('rejects a negative revisionHistoryLimit', () => {
+      expectRule(
+        daemonSet('  revisionHistoryLimit: -1\n'),
+        'daemonset/negative-revision-history-limit',
+      );
+    });
+  });
+
+  describe('update strategy', () => {
+    it('warns that rollingUpdate is ignored under an OnDelete strategy', () => {
+      const finding = expectRule(
+        daemonSet('  updateStrategy:\n    type: OnDelete\n    rollingUpdate:\n      maxUnavailable: 1\n'),
+        'daemonset/rolling-update-with-on-delete',
+      );
+      // Unlike a Deployment or a StatefulSet the apiserver accepts this, so it
+      // is a warning and the removal is not offered as a safe fix.
+      expect(finding.severity).toBe('warning');
+      expect(finding.fix?.safe).toBe(false);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'updateStrategy', 'rollingUpdate'] },
+      ]);
+    });
+
+    it('says nothing about the contents of a block the controller ignores', () => {
+      // The apiserver stops validating the strategy at type: OnDelete, so a
+      // rollout that would be rejected under RollingUpdate is only reported as
+      // dead configuration.
+      expectRules(
+        daemonSet(
+          '  updateStrategy:\n    type: OnDelete\n    rollingUpdate:\n      maxUnavailable: 1\n      maxSurge: 1\n',
+        ),
+        ['daemonset/rolling-update-with-on-delete'],
+      );
+    });
+
+    it('accepts maxUnavailable on its own', () => {
+      expectRules(
+        daemonSet('  updateStrategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxUnavailable: 2\n'),
+        [],
+      );
+    });
+
+    it('accepts maxSurge on its own', () => {
+      expectRules(daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxSurge: 1\n'), []);
+    });
+
+    it('accepts an empty rollingUpdate, which the API defaults', () => {
+      expectRules(daemonSet('  updateStrategy:\n    rollingUpdate: {}\n'), []);
+    });
+
+    it('rejects maxSurge alongside a non-zero maxUnavailable', () => {
+      const finding = expectRule(
+        daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: 1\n      maxSurge: 1\n'),
+        'daemonset/max-surge-with-max-unavailable',
+      );
+      expect(finding.path).toEqual(['spec', 'updateStrategy', 'rollingUpdate', 'maxSurge']);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'updateStrategy', 'rollingUpdate', 'maxUnavailable'], value: 0 },
+      ]);
+    });
+
+    it('rejects both at zero', () => {
+      const finding = expectRule(
+        daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: 0\n      maxSurge: 0\n'),
+        'daemonset/max-unavailable-and-surge-zero',
+      );
+      expect(finding.path).toEqual(['spec', 'updateStrategy', 'rollingUpdate', 'maxUnavailable']);
+    });
+
+    it('accepts maxUnavailable at zero when maxSurge takes over', () => {
+      expectRules(
+        daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: 0\n      maxSurge: 30%\n'),
+        [],
+      );
+    });
+
+    it('rejects a negative count', () => {
+      const finding = expectRule(
+        daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: -1\n'),
+        'daemonset/invalid-percent',
+      );
+      expect(finding.message).toContain('must not be negative');
+    });
+
+    it('rejects a percentage above 100', () => {
+      expectRule(
+        daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxSurge: 150%\n'),
+        'daemonset/percent-over-100',
+      );
+    });
+
+    it('rejects a malformed IntOrString', () => {
+      expectRule(
+        daemonSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: two\n'),
+        'daemonset/invalid-percent',
+      );
+    });
+
+    it('leaves an unknown strategy type to the enum rule', () => {
+      expectRule(daemonSet('  updateStrategy:\n    type: Rolling\n'), 'pod/invalid-enum-value');
+    });
+  });
+
+  describe('volumes', () => {
+    const withDisk = (readOnly: string) =>
+      daemonSetWithPodSpec(
+        `      volumes:\n        - name: disk\n          gcePersistentDisk:\n            pdName: data\n${readOnly}`,
+      );
+
+    it('rejects a read-write GCE persistent disk', () => {
+      const finding = expectRule(
+        withDisk('            readOnly: false\n'),
+        'daemonset/read-write-persistent-disk',
+      );
+      expect(finding.path).toEqual([
+        'spec', 'template', 'spec', 'volumes', 0, 'gcePersistentDisk', 'readOnly',
+      ]);
+      expect(finding.fix?.ops).toEqual([
+        {
+          op: 'set',
+          path: ['spec', 'template', 'spec', 'volumes', 0, 'gcePersistentDisk', 'readOnly'],
+          value: true,
+        },
+      ]);
+    });
+
+    it('reports an omitted readOnly on the volume source, since it defaults to false', () => {
+      const finding = expectRule(withDisk(''), 'daemonset/read-write-persistent-disk');
+      expect(finding.path).toEqual([
+        'spec', 'template', 'spec', 'volumes', 0, 'gcePersistentDisk',
+      ]);
+      expect(finding.message).toContain('"disk"');
+    });
+
+    it('accepts a read-only one', () => {
+      expectNoRule(withDisk('            readOnly: true\n'), 'daemonset/read-write-persistent-disk');
+    });
+
+    it('leaves the same volume alone on a Deployment', () => {
+      // ValidateReadOnlyPersistentDisks is the DaemonSet's own check; a
+      // Deployment can perfectly well run a single Pod with a writable disk.
+      expectNoRule(
+        deploymentWithPodSpec(
+          '      volumes:\n        - name: disk\n          gcePersistentDisk:\n            pdName: data\n',
+        ),
+        'daemonset/read-write-persistent-disk',
+      );
+    });
+  });
+
+  describe('pod spec rules under the template', () => {
+    it('reports container problems at the template path', () => {
+      const finding = expectRule(
+        daemonSetWithPodSpec('      hostNetwork: true\n      hostUsers: false\n'),
+        'pod/host-users-conflict',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'hostNetwork']);
+    });
+
+    it('names the template path in messages that quote a field', () => {
+      const finding = expectRule(
+        daemonSetWithPodSpec('      dnsPolicy: None\n'),
+        'pod/dns-none-without-config',
+      );
+      expect(finding.message).toContain('spec.template.spec.dnsConfig');
+    });
+
+    it("checks the DaemonSet's own name, not the template's", () => {
+      const finding = expectRule(
+        VALID_DAEMONSET.replace('  name: node-exporter\n', '  name: Node_Exporter\n'),
+        'pod/invalid-name',
+      );
+      expect(finding.path).toEqual(['metadata', 'name']);
+      expect(finding.message).toContain('DaemonSet name');
     });
   });
 });

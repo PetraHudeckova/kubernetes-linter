@@ -232,4 +232,48 @@ spec:
             storage: 10G1
 `,
   },
+  {
+    id: 'daemonset',
+    label: 'A DaemonSet with problems',
+    blurb: 'A replica count that does not exist, a rollout that asks for both update modes at once, and a mount that points nowhere.',
+    yaml: `apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+spec:
+  # A DaemonSet runs one Pod per matching node, so it has no replica count.
+  replicas: 3
+  selector:
+    matchLabels:
+      app: node-exporter
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      restartPolicy: OnFailure
+      hostNetwork: true
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.8.2
+          ports:
+            - name: metrics
+              containerPort: 9100
+              hostPort: 9101
+          volumeMounts:
+            # The volume below is called "procfs", not "proc".
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+      volumes:
+        - name: procfs
+          hostPath:
+            path: /proc
+`,
+  },
 ];

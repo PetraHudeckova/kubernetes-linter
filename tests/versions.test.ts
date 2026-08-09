@@ -8,8 +8,10 @@ import {
 } from '../src/lint/index.js';
 import { EXAMPLES } from '../src/ui/examples.js';
 import {
+  VALID_DAEMONSET,
   VALID_DEPLOYMENT,
   VALID_STATEFULSET,
+  daemonSetWithPodSpec,
   deploymentWithPodSpec,
   pod,
   podWithContainer,
@@ -60,9 +62,10 @@ describe('bundled versions', () => {
   it('carries a root for every kind on every version', async () => {
     for (const version of AVAILABLE_VERSIONS) {
       const schema = await schemaFor(version);
-      expect(schema.kinds, version).toEqual(['Pod', 'Deployment', 'StatefulSet']);
+      expect(schema.kinds, version).toEqual(['Pod', 'Deployment', 'StatefulSet', 'DaemonSet']);
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
+      expect(schema.for('DaemonSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
     }
   });
@@ -83,6 +86,20 @@ describe('bundled versions', () => {
       const { findings } = lint(VALID_STATEFULSET, await schemaFor(version));
       expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
     }
+  });
+
+  it('lints a valid DaemonSet cleanly on every version', async () => {
+    // The fourth root, and the tripwire for the closure it adds.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_DAEMONSET, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('applies version-gated pod spec rules under a DaemonSet template', async () => {
+    const yaml = daemonSetWithPodSpec('      hostnameOverride: Not_A_Name\n');
+    expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
+    expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
   });
 
   it('applies version-gated pod spec rules under a Deployment template', async () => {

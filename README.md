@@ -1,10 +1,10 @@
 # kubernetes-linter
 
-An online linter for Kubernetes **Pod**, **Deployment** and **StatefulSet** manifests. Paste
-YAML, get told what is wrong, why it is wrong, and — where the answer is unambiguous — apply the
-fix with one click.
+An online linter for Kubernetes **Pod**, **Deployment**, **StatefulSet** and **DaemonSet**
+manifests. Paste YAML, get told what is wrong, why it is wrong, and — where the answer is
+unambiguous — apply the fix with one click.
 
-The kind comes from the document itself, so a multi-document manifest holding all three is
+The kind comes from the document itself, so a multi-document manifest holding all four is
 linted correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
@@ -44,8 +44,9 @@ schema, which OpenAPI cannot express:
 | Cross-field | `dnsPolicy: None` without a nameserver, `hostPID` with `shareProcessNamespace`, `runAsNonRoot` with UID 0, `privileged` with `allowPrivilegeEscalation: false`, Linux-only fields on a Windows Pod |
 | Deployment | a selector that does not match the template's labels, an empty selector, `restartPolicy` other than `Always` in the template, `activeDeadlineSeconds` or ephemeral containers in a template, `rollingUpdate` under a `Recreate` strategy, `maxSurge` and `maxUnavailable` both zero, `progressDeadlineSeconds` below `minReadySeconds` |
 | StatefulSet | the same selector and template checks, plus a `serviceName` that is not a DNS label, `rollingUpdate` under an `OnDelete` strategy, a negative `partition` or `ordinals.start`, `maxUnavailable` at zero or above 100%, and volume claim templates that are unnamed, misnamed, duplicated or shadowing a volume of the pod template |
+| DaemonSet | the same selector and template checks, plus a rollout that sets `maxSurge` alongside a non-zero `maxUnavailable` (a DaemonSet does one or the other, never both), both of them at zero, a percentage above 100, a `rollingUpdate` block an `OnDelete` strategy will ignore, and a read-write GCE persistent disk, which cannot be attached to every node |
 
-Every row above the last two applies to a Deployment and a StatefulSet too: there is one PodSpec
+Every row above the last three applies to every controller too: there is one PodSpec
 rule set, addressed relative to whichever kind the document declares, so it reports against
 `spec.template.spec` on a controller and `spec` on a Pod. A StatefulSet's `volumeClaimTemplates`
 are folded into that: the controller adds one Pod volume per template, so mounting one is
@@ -130,8 +131,8 @@ Rules address the PodSpec relatively, through `ctx.at(...)`, so one rule set ser
 `ctx.at('dnsPolicy')` is `spec.dnsPolicy` on a Pod and `spec.template.spec.dnsPolicy` on a
 Deployment. Adding a kind means a root in `scripts/generate-schema.mjs`, a descriptor in
 `src/lint/kinds.ts` naming those two paths, and any rules unique to it. Each controller keeps
-its own rule module — `rules/deployment.ts`, `rules/statefulset.ts` — since what the apiserver
-checks beyond the pod template is particular to it.
+its own rule module — `rules/deployment.ts`, `rules/statefulset.ts`, `rules/daemonset.ts` —
+since what the apiserver checks beyond the pod template is particular to it.
 
 ## Deployment
 
