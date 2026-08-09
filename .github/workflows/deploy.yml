@@ -37,6 +37,23 @@ jobs:
       - name: Test
         run: npm test
 
+      # actions/configure-pages only *creates* a Pages site when none exists; it
+      # will not convert an already-enabled site from GitHub's legacy branch
+      # builder to Actions publishing. While the site is on the branch builder,
+      # it publishes the repository root verbatim — the unbuilt source, with no
+      # stylesheet and a <script src="/src/main.ts"> the browser cannot run — and
+      # that build silently wins over the artifact this workflow uploads.
+      - name: Ensure Pages publishes from Actions
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api -X PUT "repos/$GITHUB_REPOSITORY/pages" -f build_type=workflow >/dev/null 2>&1; then
+            echo "Pages is set to publish from GitHub Actions."
+          else
+            echo "::warning title=Pages still on the legacy branch builder::Could not switch publishing automatically. Set Settings -> Pages -> Source to 'GitHub Actions', otherwise the deployed site keeps serving the unbuilt repository root."
+          fi
+
       - name: Configure Pages
         id: pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
