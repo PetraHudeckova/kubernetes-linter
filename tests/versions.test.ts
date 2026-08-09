@@ -7,7 +7,15 @@ import {
   DEFAULT_VERSION,
 } from '../src/lint/index.js';
 import { EXAMPLES } from '../src/ui/examples.js';
-import { VALID_DEPLOYMENT, deploymentWithPodSpec, pod, podWithContainer } from './helpers.js';
+import {
+  VALID_DEPLOYMENT,
+  VALID_STATEFULSET,
+  deploymentWithPodSpec,
+  pod,
+  podWithContainer,
+  statefulSet,
+  statefulSetWithPodSpec,
+} from './helpers.js';
 
 const schemaFor = (version: string) => loadSchema(version);
 
@@ -52,8 +60,9 @@ describe('bundled versions', () => {
   it('carries a root for every kind on every version', async () => {
     for (const version of AVAILABLE_VERSIONS) {
       const schema = await schemaFor(version);
-      expect(schema.kinds, version).toEqual(['Pod', 'Deployment']);
+      expect(schema.kinds, version).toEqual(['Pod', 'Deployment', 'StatefulSet']);
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
+      expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('Pod')?.apiVersion, version).toBe('v1');
     }
   });
@@ -67,6 +76,15 @@ describe('bundled versions', () => {
     }
   });
 
+  it('lints a valid StatefulSet cleanly on every version', async () => {
+    // Covers the third root, and with it PersistentVolumeClaim, which only the
+    // StatefulSet closure pulls in.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_STATEFULSET, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
   it('applies version-gated pod spec rules under a Deployment template', async () => {
     // hostnameOverride arrived in 1.34. The gate resolves the field through
     // the kind's own spec path, so it must still close on an older target
@@ -74,6 +92,37 @@ describe('bundled versions', () => {
     const yaml = deploymentWithPodSpec('      hostnameOverride: Not_A_Name\n');
     expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
     expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
+  });
+
+  it('applies version-gated pod spec rules under a StatefulSet template', async () => {
+    const yaml = statefulSetWithPodSpec('      hostnameOverride: Not_A_Name\n');
+    expect(await ruleIdsAt('1.36', yaml)).toContain('pod/invalid-spec-name');
+    expect(await ruleIdsAt('1.33', yaml)).toEqual(['schema/unknown-field']);
+  });
+});
+
+describe('StatefulSet fields that came and went', () => {
+  it('accepts spec.ordinals from 1.26', async () => {
+    const yaml = statefulSet('  ordinals:\n    start: 1\n');
+
+    expect(await ruleIdsAt('1.25', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.26', yaml)).toEqual([]);
+  });
+
+  it('does not double-report a negative ordinal on a version without the field', async () => {
+    const yaml = statefulSet('  ordinals:\n    start: -1\n');
+
+    expect(await ruleIdsAt('1.25', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.26', yaml)).toContain('statefulset/negative-ordinal-start');
+  });
+
+  it('requires serviceName up to 1.32 and leaves it optional from 1.33', async () => {
+    // The headless Service stopped being mandatory in 1.33; the requirement
+    // itself lives in the generated schema, so this pins the regeneration.
+    const yaml = VALID_STATEFULSET.replace('  serviceName: db\n', '');
+
+    expect(await ruleIdsAt('1.32', yaml)).toEqual(['schema/required-field']);
+    expect(await ruleIdsAt('1.33', yaml)).toEqual([]);
   });
 });
 

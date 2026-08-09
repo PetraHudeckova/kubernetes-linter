@@ -186,4 +186,50 @@ spec:
               name: http
 `,
   },
+  {
+    id: 'statefulset',
+    label: 'A StatefulSet with problems',
+    blurb: 'A governing Service that is not a valid name, a mount that matches no claim template, and an update strategy that contradicts itself.',
+    yaml: `apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  # A Service name is a DNS label, so it cannot carry a dot or a capital.
+  serviceName: DB.headless
+  replicas: 3
+  podManagementPolicy: Ordered
+  selector:
+    matchLabels:
+      app: db
+  updateStrategy:
+    type: OnDelete
+    rollingUpdate:
+      partition: -1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - name: db
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            # The claim template below is called "data", not "date".
+            - name: date
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10G1
+`,
+  },
 ];

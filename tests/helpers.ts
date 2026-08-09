@@ -96,3 +96,70 @@ ${templateSpecFragment}      containers:
 export function deploymentWithPodSpec(templateSpecFragment: string): string {
   return deployment('', templateSpecFragment);
 }
+
+/**
+ * A minimal valid StatefulSet that individual tests mutate. It keeps a claim
+ * template and a mount that references it, since that pairing is what makes a
+ * StatefulSet's volumes different from every other kind's.
+ */
+export const VALID_STATEFULSET = `apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  serviceName: db
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - name: db
+          image: postgres:16-alpine
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+`;
+
+/**
+ * Build a StatefulSet from a fragment of StatefulSetSpec, with a selector and
+ * template that already agree so only the fragment under test misbehaves.
+ * `serviceName` is included because it was required until 1.33.
+ * Fragments are indented two spaces, matching `pod()`.
+ */
+export function statefulSet(specFragment: string, templateSpecFragment = ''): string {
+  return `apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+${specFragment}  serviceName: db
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+${templateSpecFragment}      containers:
+        - name: db
+          image: postgres:16-alpine
+`;
+}
+
+/** A StatefulSet whose pod template carries the given PodSpec fragment. */
+export function statefulSetWithPodSpec(templateSpecFragment: string): string {
+  return statefulSet('', templateSpecFragment);
+}

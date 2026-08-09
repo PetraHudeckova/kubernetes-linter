@@ -10,6 +10,20 @@ import { asObject, asString, type Rule, type RuleContext } from './context.js';
 const NAME_DOCS =
   'https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names';
 
+/** What `metadata.name` must look like, per the kind's descriptor. */
+const NAME_FORMATS = {
+  subdomain: {
+    check: isDNS1123Subdomain,
+    explanation:
+      'Object names are DNS subdomain names: lowercase letters, digits, "-" and ".", starting and ending with an alphanumeric character, at most 253 characters.',
+  },
+  label: {
+    check: isDNS1123Label,
+    explanation:
+      'This kind is named with a DNS label rather than a subdomain: lowercase letters, digits and "-", at most 63 characters, and no dots — the name ends up in a hostname.',
+  },
+} as const;
+
 export const metadataRule: Rule = {
   id: 'pod/metadata',
   run(ctx: RuleContext) {
@@ -32,6 +46,7 @@ export const metadataRule: Rule = {
 
     const name = asString(metadata['name']);
     const generateName = asString(metadata['generateName']);
+    const format = NAME_FORMATS[ctx.kind.nameFormat ?? 'subdomain'];
 
     if (metadata['name'] === undefined && metadata['generateName'] === undefined) {
       ctx.report({
@@ -46,7 +61,7 @@ export const metadataRule: Rule = {
     }
 
     if (name !== undefined) {
-      const check = isDNS1123Subdomain(name);
+      const check = format.check(name);
       if (!check.ok) {
         const suggestion = suggestName(name);
         ctx.report({
@@ -54,31 +69,30 @@ export const metadataRule: Rule = {
           severity: 'error',
           path: ['metadata', 'name'],
           message: `"${name}" is not a valid ${ctx.kind.kind} name: it ${check.reason}.`,
-          explanation:
-            'Object names are DNS subdomain names: lowercase letters, digits, "-" and ".", starting and ending with an alphanumeric character, at most 253 characters.',
+          explanation: format.explanation,
           docsUrl: NAME_DOCS,
-          fix: suggestion
-            ? {
-                title: `Change to "${suggestion}"`,
-                safe: false,
-                ops: [{ op: 'set', path: ['metadata', 'name'], value: suggestion }],
-              }
-            : undefined,
+          fix:
+            suggestion && format.check(suggestion).ok
+              ? {
+                  title: `Change to "${suggestion}"`,
+                  safe: false,
+                  ops: [{ op: 'set', path: ['metadata', 'name'], value: suggestion }],
+                }
+              : undefined,
         });
       }
     }
 
     if (generateName !== undefined) {
       // The apiserver appends a 5-character suffix, so the prefix must leave room.
-      const check = isDNS1123Subdomain(generateName.replace(/-$/, ''));
+      const check = format.check(generateName.replace(/-$/, ''));
       if (!check.ok) {
         ctx.report({
           ruleId: 'pod/invalid-generate-name',
           severity: 'error',
           path: ['metadata', 'generateName'],
           message: `"${generateName}" is not a valid name prefix: it ${check.reason}.`,
-          explanation:
-            'generateName is used as a prefix for a server-generated name, so it must itself be a valid DNS subdomain name.',
+          explanation: `generateName is used as a prefix for a server-generated name, so it must itself be a valid name. ${format.explanation}`,
           docsUrl: NAME_DOCS,
         });
       }

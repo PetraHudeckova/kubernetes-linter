@@ -1,10 +1,11 @@
 # kubernetes-linter
 
-An online linter for Kubernetes **Pod** and **Deployment** manifests. Paste YAML, get told what
-is wrong, why it is wrong, and — where the answer is unambiguous — apply the fix with one click.
+An online linter for Kubernetes **Pod**, **Deployment** and **StatefulSet** manifests. Paste
+YAML, get told what is wrong, why it is wrong, and — where the answer is unambiguous — apply the
+fix with one click.
 
-The kind comes from the document itself, so a multi-document manifest holding both is linted
-correctly in one pass.
+The kind comes from the document itself, so a multi-document manifest holding all three is
+linted correctly in one pass.
 
 Everything runs in the browser. The manifest never leaves the tab: there is no server, no
 upload, and the "Share link" button puts the document in the URL fragment, which browsers do
@@ -42,10 +43,13 @@ schema, which OpenAPI cannot express:
 | Scheduling | selector operators and their values, preference weights, toleration and topology-spread consistency |
 | Cross-field | `dnsPolicy: None` without a nameserver, `hostPID` with `shareProcessNamespace`, `runAsNonRoot` with UID 0, `privileged` with `allowPrivilegeEscalation: false`, Linux-only fields on a Windows Pod |
 | Deployment | a selector that does not match the template's labels, an empty selector, `restartPolicy` other than `Always` in the template, `activeDeadlineSeconds` or ephemeral containers in a template, `rollingUpdate` under a `Recreate` strategy, `maxSurge` and `maxUnavailable` both zero, `progressDeadlineSeconds` below `minReadySeconds` |
+| StatefulSet | the same selector and template checks, plus a `serviceName` that is not a DNS label, `rollingUpdate` under an `OnDelete` strategy, a negative `partition` or `ordinals.start`, `maxUnavailable` at zero or above 100%, and volume claim templates that are unnamed, misnamed, duplicated or shadowing a volume of the pod template |
 
-Every row above the last applies to a Deployment too: there is one PodSpec rule set, addressed
-relative to whichever kind the document declares, so it reports against `spec.template.spec`
-on a Deployment and `spec` on a Pod.
+Every row above the last two applies to a Deployment and a StatefulSet too: there is one PodSpec
+rule set, addressed relative to whichever kind the document declares, so it reports against
+`spec.template.spec` on a controller and `spec` on a Pod. A StatefulSet's `volumeClaimTemplates`
+are folded into that: the controller adds one Pod volume per template, so mounting one is
+recognised as valid even though `spec.template.spec.volumes` never mentions it.
 
 Hovering any field shows its type, whether it is required, and its description straight from
 the API specification.
@@ -125,7 +129,9 @@ A new rule pack — security posture, for example — slots in the same way.
 Rules address the PodSpec relatively, through `ctx.at(...)`, so one rule set serves every kind:
 `ctx.at('dnsPolicy')` is `spec.dnsPolicy` on a Pod and `spec.template.spec.dnsPolicy` on a
 Deployment. Adding a kind means a root in `scripts/generate-schema.mjs`, a descriptor in
-`src/lint/kinds.ts` naming those two paths, and any rules unique to it.
+`src/lint/kinds.ts` naming those two paths, and any rules unique to it. Each controller keeps
+its own rule module — `rules/deployment.ts`, `rules/statefulset.ts` — since what the apiserver
+checks beyond the pod template is particular to it.
 
 ## Deployment
 

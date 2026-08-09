@@ -99,12 +99,32 @@ const ENUMS: Record<string, EnumSpec> = {
     note: 'Defaults to RollingUpdate.',
   },
 
+  'StatefulSetSpec.podManagementPolicy': {
+    values: ['OrderedReady', 'Parallel'],
+    note: 'Defaults to OrderedReady, which starts and replaces Pods one at a time, in ordinal order.',
+  },
+  'StatefulSetUpdateStrategy.type': {
+    values: ['RollingUpdate', 'OnDelete'],
+    note: 'Defaults to RollingUpdate.',
+  },
+  'StatefulSetPersistentVolumeClaimRetentionPolicy.whenDeleted': {
+    values: ['Retain', 'Delete'],
+    note: 'Defaults to Retain.',
+  },
+  'StatefulSetPersistentVolumeClaimRetentionPolicy.whenScaled': {
+    values: ['Retain', 'Delete'],
+    note: 'Defaults to Retain.',
+  },
+
   // Status fields, which show up whenever someone pastes `kubectl get -o yaml`.
   'PodStatus.phase': { values: ['Pending', 'Running', 'Succeeded', 'Failed', 'Unknown'] },
   'PodStatus.qosClass': { values: ['Guaranteed', 'Burstable', 'BestEffort'] },
   'PodCondition.status': { values: ['True', 'False', 'Unknown'] },
   'ResourceHealth.health': { values: ['Healthy', 'Unhealthy', 'Unknown'] },
   'DeploymentCondition.status': { values: ['True', 'False', 'Unknown'] },
+  'StatefulSetCondition.status': { values: ['True', 'False', 'Unknown'] },
+  'PersistentVolumeClaimStatus.phase': { values: ['Pending', 'Bound', 'Lost'] },
+  'PersistentVolumeClaimCondition.status': { values: ['True', 'False', 'Unknown'] },
 };
 
 export const enumRule: Rule = {

@@ -1,4 +1,4 @@
-import { lintSchema, isPlainObject, type Schema } from './schema.js';
+import { lintSchema, isPlainObject, listKinds, type Schema } from './schema.js';
 import { KINDS } from './kinds.js';
 import { defaultSchema } from './schemas.js';
 import { parseDocuments, findDuplicateKeys, locate, locateSyntaxError, type ParsedDoc } from './parse.js';
@@ -62,9 +62,9 @@ function lintOne(parsed: ParsedDoc, schema: Schema): Finding[] {
       ruleId: 'lint/unsupported-kind',
       severity: 'info',
       path: ['kind'],
-      message: `This linter understands Pod and Deployment, so "${result.unsupportedKind}" was not checked.`,
+      message: `This linter understands ${listKinds(schema.kinds)}, so "${result.unsupportedKind}" was not checked.`,
       explanation:
-        'Other workload controllers — StatefulSet, DaemonSet, Job, CronJob — embed a Pod template the same way a Deployment does. You can lint that template on its own by pasting it as a Pod, with the template\'s metadata and spec under a "kind: Pod" document.',
+        'Other workload controllers — DaemonSet, Job, CronJob — embed a Pod template the same way a Deployment or a StatefulSet does. You can lint that template on its own by pasting it as a Pod, with the template\'s metadata and spec under a "kind: Pod" document.',
     });
     return findings;
   }

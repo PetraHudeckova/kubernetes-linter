@@ -4,16 +4,17 @@
  * spec, one file per supported minor version.
  *
  * The upstream swagger.json is ~4 MB and covers 500-770 definitions depending
- * on the release. Everything reachable from the roots below is only ~115-145
+ * on the release. Everything reachable from the roots below is only ~120-160
  * of them (~35 KB brotli with descriptions intact), which is small enough to
  * ship to the browser. The descriptions are what let the UI explain a field in
  * the API's own words, so they are kept.
  *
  * One bundle carries every root because the closures overlap almost entirely:
- * a Deployment reaches PodSpec through PodTemplateSpec, so the union is only
- * seven definitions wider than Pod's alone. Separate per-kind files would be
- * near-duplicates, and a single bundle also means lint() can switch kinds
- * mid-document without loading anything.
+ * a Deployment reaches PodSpec through PodTemplateSpec, and a StatefulSet adds
+ * little beyond its own spec plus PersistentVolumeClaim, so the union is only
+ * a dozen or so definitions wider than Pod's alone. Separate per-kind files
+ * would be near-duplicates, and a single bundle also means lint() can switch
+ * kinds mid-document without loading anything.
  *
  * Usage:
  *   node scripts/generate-schema.mjs                # every supported version
@@ -31,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 const ROOTS = {
   Pod: 'io.k8s.api.core.v1.Pod',
   Deployment: 'io.k8s.api.apps.v1.Deployment',
+  StatefulSet: 'io.k8s.api.apps.v1.StatefulSet',
 };
 
 /**

@@ -13,7 +13,10 @@ export const volumesRule: Rule = {
       (field) => field !== 'name',
     );
 
-    const declared = new Map<string, number>();
+    // A StatefulSet's controller adds one volume per volumeClaimTemplate to
+    // every Pod it creates, so those names are mountable even though the pod
+    // spec never lists them.
+    const declared = new Set<string>(ctx.generatedVolumes);
     const volumes = asArray(ctx.spec['volumes']) ?? [];
 
     volumes.forEach((entry, index) => {
@@ -23,7 +26,7 @@ export const volumesRule: Rule = {
       const name = asString(volume['name']);
 
       if (name !== undefined) {
-        declared.set(name, index);
+        declared.add(name);
         const check = isDNS1123Label(name);
         if (!check.ok) {
           ctx.report({
@@ -173,14 +176,14 @@ function checkVolumeReference(
   ctx: RuleContext,
   mount: Record<string, unknown>,
   path: (string | number)[],
-  declared: Map<string, number>,
+  declared: Set<string>,
   field: string,
 ): void {
   const name = asString(mount['name']);
   if (name === undefined || declared.has(name)) return;
 
-  const suggestion = didYouMean(name, declared.keys());
-  const known = [...declared.keys()];
+  const suggestion = didYouMean(name, declared);
+  const known = [...declared];
 
   ctx.report({
     ruleId: 'pod/volume-mount-not-found',

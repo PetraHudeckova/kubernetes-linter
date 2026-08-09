@@ -119,9 +119,10 @@ describe('schema conformance', () => {
     });
 
     it('skips the rules for a kind it does not carry, with an explanation', () => {
-      const result = findings(VALID_POD.replace('kind: Pod', 'kind: StatefulSet'));
+      const result = findings(VALID_POD.replace('kind: Pod', 'kind: DaemonSet'));
       expect(result.map((finding) => finding.ruleId)).toEqual(['lint/unsupported-kind']);
       expect(result[0]?.severity).toBe('info');
+      expect(result[0]?.message).toContain('Pod, Deployment and StatefulSet');
     });
 
     it('expects the group-prefixed apiVersion for a Deployment', () => {
@@ -214,8 +215,15 @@ describe('field descriptions', () => {
     expect(deployment.describe(['spec', 'containers'])).toBeUndefined();
   });
 
+  it('resolves a StatefulSet-only field', () => {
+    const statefulSet = schema.for('StatefulSet')!;
+    const described = statefulSet.describe(['spec', 'volumeClaimTemplates', 0, 'spec', 'storageClassName']);
+    expect(described?.type).toBe('string');
+    expect(statefulSet.describe(['spec', 'strategy'])).toBeUndefined();
+  });
+
   it('carries a root for every supported kind', () => {
-    expect(schema.kinds).toEqual(['Pod', 'Deployment']);
-    expect(schema.for('StatefulSet')).toBeUndefined();
+    expect(schema.kinds).toEqual(['Pod', 'Deployment', 'StatefulSet']);
+    expect(schema.for('DaemonSet')).toBeUndefined();
   });
 });

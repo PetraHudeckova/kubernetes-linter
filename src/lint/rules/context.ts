@@ -22,6 +22,12 @@ export interface RuleContext {
   kind: KindDescriptor;
   /** Every container from all three lists, in declaration order. */
   containers: ContainerRef[];
+  /**
+   * Volumes the controller adds to every Pod it creates, over and above the
+   * pod spec's own `volumes` — a StatefulSet's volumeClaimTemplates. Empty for
+   * kinds that generate none, so a mount check can simply consider both.
+   */
+  generatedVolumes: string[];
   schema: KindSchema;
   /**
    * Absolute path to a field inside the PodSpec. Rules address the spec
@@ -78,6 +84,7 @@ export function createContext(
     spec,
     kind,
     containers,
+    generatedVolumes: generatedVolumes(doc, kind),
     schema,
     at: (...segments) => [...kind.specPath, ...segments],
     meta: (...segments) => [...kind.podMetadataPath, ...segments],
@@ -89,12 +96,33 @@ export function createContext(
 
 /** Follow a path of mapping keys, stopping at the first thing that is not one. */
 function descend(value: Record<string, unknown>, path: Path): Record<string, unknown> {
+  const found = valueAt(value, path);
+  return isPlainObject(found) ? found : {};
+}
+
+function valueAt(value: Record<string, unknown>, path: Path): unknown {
   let current: unknown = value;
   for (const segment of path) {
-    if (!isPlainObject(current)) return {};
+    if (!isPlainObject(current)) return undefined;
     current = current[String(segment)];
   }
-  return isPlainObject(current) ? current : {};
+  return current;
+}
+
+/** The names of the volumes this kind's controller generates, if any. */
+function generatedVolumes(doc: Record<string, unknown>, kind: KindDescriptor): string[] {
+  if (!kind.claimTemplatesPath) return [];
+  const templates = valueAt(doc, kind.claimTemplatesPath);
+  if (!Array.isArray(templates)) return [];
+
+  const names: string[] = [];
+  for (const entry of templates) {
+    if (!isPlainObject(entry)) continue;
+    const metadata = entry['metadata'];
+    const name = isPlainObject(metadata) ? asString(metadata['name']) : undefined;
+    if (name !== undefined) names.push(name);
+  }
+  return names;
 }
 
 function singular(list: ContainerList): string {

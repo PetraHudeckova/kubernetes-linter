@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   VALID_DEPLOYMENT,
+  VALID_STATEFULSET,
   deployment,
   deploymentWithPodSpec,
   expectNoRule,
@@ -8,6 +9,8 @@ import {
   expectRules,
   pod,
   podWithContainer,
+  statefulSet,
+  statefulSetWithPodSpec,
 } from './helpers.js';
 
 describe('metadata', () => {
@@ -768,6 +771,327 @@ describe('deployment', () => {
       );
       expect(finding.path).toEqual(['metadata', 'name']);
       expect(finding.message).toContain('Deployment name');
+    });
+  });
+});
+
+describe('statefulset', () => {
+  it('accepts a minimal StatefulSet', () => {
+    expectRules(VALID_STATEFULSET, []);
+  });
+
+  describe('selector', () => {
+    it('rejects an empty selector', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('    matchLabels:\n      app: db\n', '    matchLabels: {}\n'),
+        'statefulset/empty-selector',
+      );
+      expect(finding.path).toEqual(['spec', 'selector']);
+    });
+
+    it('reports a template label that contradicts the selector', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('      app: db\n  template', '      app: postgres\n  template'),
+        'statefulset/selector-mismatch',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'metadata', 'labels', 'app']);
+      expect(finding.fix?.ops).toEqual([
+        {
+          op: 'set',
+          path: ['spec', 'template', 'metadata', 'labels', 'app'],
+          value: 'postgres',
+        },
+      ]);
+    });
+
+    it('evaluates matchExpressions against the template labels', () => {
+      const yaml = VALID_STATEFULSET.replace(
+        '    matchLabels:\n      app: db\n',
+        '    matchExpressions:\n      - key: app\n        operator: In\n        values: [api, worker]\n',
+      );
+      const finding = expectRule(yaml, 'statefulset/selector-mismatch');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0]);
+    });
+
+    it('checks operator and values consistency under the statefulset namespace', () => {
+      const yaml = VALID_STATEFULSET.replace(
+        '    matchLabels:\n      app: db\n',
+        '    matchExpressions:\n      - key: app\n        operator: Exists\n        values: [db]\n',
+      );
+      const finding = expectRule(yaml, 'statefulset/selector-values-forbidden');
+      expect(finding.path).toEqual(['spec', 'selector', 'matchExpressions', 0, 'values']);
+    });
+  });
+
+  describe('pod template', () => {
+    it('requires restartPolicy Always, with a safe fix', () => {
+      const finding = expectRule(
+        statefulSetWithPodSpec('      restartPolicy: OnFailure\n'),
+        'statefulset/template-restart-policy',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'restartPolicy']);
+      expect(finding.fix?.safe).toBe(true);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'template', 'spec', 'restartPolicy'], value: 'Always' },
+      ]);
+    });
+
+    it('forbids activeDeadlineSeconds', () => {
+      const finding = expectRule(
+        statefulSetWithPodSpec('      activeDeadlineSeconds: 600\n'),
+        'statefulset/template-active-deadline',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'template', 'spec', 'activeDeadlineSeconds'] },
+      ]);
+    });
+
+    it('forbids ephemeral containers', () => {
+      expectRule(
+        statefulSetWithPodSpec('      ephemeralContainers:\n        - name: debug\n          image: busybox\n'),
+        'statefulset/template-ephemeral-containers',
+      );
+    });
+
+    it('validates template annotation keys', () => {
+      expectRule(
+        VALID_STATEFULSET.replace(
+          '      labels:\n        app: db\n',
+          '      labels:\n        app: db\n      annotations:\n        "bad key": x\n',
+        ),
+        'pod/invalid-annotation-key',
+      );
+    });
+  });
+
+  describe('serviceName', () => {
+    it('requires a DNS label, with a fix when one can be spelled', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('  serviceName: db\n', '  serviceName: DB-Headless\n'),
+        'statefulset/invalid-service-name',
+      );
+      expect(finding.path).toEqual(['spec', 'serviceName']);
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['spec', 'serviceName'], value: 'db-headless' },
+      ]);
+    });
+
+    it('withholds the fix when the obvious rewrite is still not a label', () => {
+      // Lowercasing "DB.headless" leaves the dot, which a Service name may not
+      // carry — a name that is a subdomain but not a label.
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('  serviceName: db\n', '  serviceName: DB.headless\n'),
+        'statefulset/invalid-service-name',
+      );
+      expect(finding.fix).toBeUndefined();
+    });
+
+    it('accepts an empty serviceName, which asks for no governing Service', () => {
+      expectRules(VALID_STATEFULSET.replace('  serviceName: db\n', '  serviceName: ""\n'), []);
+    });
+  });
+
+  describe('counters', () => {
+    it('rejects negative replicas', () => {
+      const finding = expectRule(statefulSet('  replicas: -1\n'), 'statefulset/negative-replicas');
+      expect(finding.path).toEqual(['spec', 'replicas']);
+    });
+
+    it('accepts zero replicas', () => {
+      expectRules(statefulSet('  replicas: 0\n'), []);
+    });
+
+    it('rejects a negative minReadySeconds', () => {
+      expectRule(statefulSet('  minReadySeconds: -5\n'), 'statefulset/negative-min-ready-seconds');
+    });
+
+    it('rejects a negative revisionHistoryLimit', () => {
+      expectRule(
+        statefulSet('  revisionHistoryLimit: -1\n'),
+        'statefulset/negative-revision-history-limit',
+      );
+    });
+
+    it('rejects a negative ordinals.start', () => {
+      const finding = expectRule(
+        statefulSet('  ordinals:\n    start: -1\n'),
+        'statefulset/negative-ordinal-start',
+      );
+      expect(finding.path).toEqual(['spec', 'ordinals', 'start']);
+    });
+
+    it('accepts an ordinals.start above zero', () => {
+      expectRules(statefulSet('  ordinals:\n    start: 5\n'), []);
+    });
+  });
+
+  describe('update strategy', () => {
+    it('rejects rollingUpdate under an OnDelete strategy', () => {
+      const finding = expectRule(
+        statefulSet('  updateStrategy:\n    type: OnDelete\n    rollingUpdate:\n      partition: 1\n'),
+        'statefulset/rolling-update-with-on-delete',
+      );
+      expect(finding.fix?.ops).toEqual([
+        { op: 'delete', path: ['spec', 'updateStrategy', 'rollingUpdate'] },
+      ]);
+    });
+
+    it('accepts rollingUpdate under a RollingUpdate strategy', () => {
+      expectRules(
+        statefulSet('  updateStrategy:\n    type: RollingUpdate\n    rollingUpdate:\n      partition: 2\n'),
+        [],
+      );
+    });
+
+    it('rejects a negative partition', () => {
+      const finding = expectRule(
+        statefulSet('  updateStrategy:\n    rollingUpdate:\n      partition: -1\n'),
+        'statefulset/negative-partition',
+      );
+      expect(finding.path).toEqual(['spec', 'updateStrategy', 'rollingUpdate', 'partition']);
+    });
+
+    it('rejects maxUnavailable at zero', () => {
+      const finding = expectRule(
+        statefulSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: 0\n'),
+        'statefulset/invalid-max-unavailable',
+      );
+      expect(finding.message).toContain('greater than 0');
+    });
+
+    it('rejects a percentage above 100', () => {
+      expectRule(
+        statefulSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: 150%\n'),
+        'statefulset/percent-over-100',
+      );
+    });
+
+    it('accepts a percentage within range', () => {
+      expectRules(statefulSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: 50%\n'), []);
+    });
+
+    it('rejects a malformed IntOrString', () => {
+      expectRule(
+        statefulSet('  updateStrategy:\n    rollingUpdate:\n      maxUnavailable: two\n'),
+        'statefulset/invalid-max-unavailable',
+      );
+    });
+
+    it('leaves an unknown strategy type to the enum rule', () => {
+      expectRule(statefulSet('  updateStrategy:\n    type: Rolling\n'), 'pod/invalid-enum-value');
+    });
+
+    it('checks podManagementPolicy through the enum table', () => {
+      expectRule(statefulSet('  podManagementPolicy: Ordered\n'), 'pod/invalid-enum-value');
+    });
+
+    it('checks the claim retention policy through the enum table', () => {
+      expectRule(
+        statefulSet('  persistentVolumeClaimRetentionPolicy:\n    whenDeleted: delete\n'),
+        'pod/invalid-enum-value',
+      );
+    });
+  });
+
+  describe('volume claim templates', () => {
+    it('lets a mount reference a claim template', () => {
+      // The volume is generated by the controller, so it is nowhere in the
+      // pod spec's own volumes list.
+      expectNoRule(VALID_STATEFULSET, 'pod/volume-mount-not-found');
+    });
+
+    it('still reports a mount that matches neither a volume nor a claim template', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('            - name: data\n', '            - name: date\n'),
+        'pod/volume-mount-not-found',
+      );
+      expect(finding.message).toContain('Did you mean "data"');
+    });
+
+    it('requires a name', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('    - metadata:\n        name: data\n', '    - metadata: {}\n'),
+        'statefulset/claim-template-without-name',
+      );
+      expect(finding.path).toEqual(['spec', 'volumeClaimTemplates', 0]);
+    });
+
+    it('requires the name to be a DNS label', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('        name: data\n', '        name: Data_Volume\n'),
+        'statefulset/invalid-claim-template-name',
+      );
+      expect(finding.path).toEqual(['spec', 'volumeClaimTemplates', 0, 'metadata', 'name']);
+    });
+
+    it('rejects two claim templates with the same name', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace(
+          '    - metadata:\n        name: data\n',
+          '    - metadata:\n        name: data\n      spec:\n        accessModes: ["ReadWriteOnce"]\n        resources:\n          requests:\n            storage: 1Gi\n    - metadata:\n        name: data\n',
+        ),
+        'statefulset/duplicate-claim-template',
+      );
+      expect(finding.message).toContain('entry 1');
+    });
+
+    it('warns when a claim template shadows a volume in the pod template', () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace(
+          '  volumeClaimTemplates:\n',
+          '      volumes:\n        - name: data\n          emptyDir: {}\n  volumeClaimTemplates:\n',
+        ),
+        'statefulset/claim-template-shadows-volume',
+      );
+      expect(finding.severity).toBe('warning');
+      expect(finding.message).toContain('"data"');
+    });
+
+    it('validates the claim spec through the schema layer', () => {
+      expectRule(
+        VALID_STATEFULSET.replace('            storage: 1Gi\n', '            storage: 1 Gi\n'),
+        'schema/quantity',
+      );
+    });
+  });
+
+  describe('pod spec rules under the template', () => {
+    it('reports container problems at the template path', () => {
+      const finding = expectRule(
+        statefulSetWithPodSpec('      hostNetwork: true\n      hostUsers: false\n'),
+        'pod/host-users-conflict',
+      );
+      expect(finding.path).toEqual(['spec', 'template', 'spec', 'hostNetwork']);
+    });
+
+    it('names the template path in messages that quote a field', () => {
+      const finding = expectRule(
+        statefulSetWithPodSpec('      dnsPolicy: None\n'),
+        'pod/dns-none-without-config',
+      );
+      expect(finding.message).toContain('spec.template.spec.dnsConfig');
+    });
+
+    it("checks the StatefulSet's own name, not the template's", () => {
+      const finding = expectRule(
+        VALID_STATEFULSET.replace('  name: db\n', '  name: DB-Primary\n'),
+        'pod/invalid-name',
+      );
+      expect(finding.path).toEqual(['metadata', 'name']);
+      expect(finding.message).toContain('StatefulSet name');
+      expect(finding.fix?.ops).toEqual([
+        { op: 'set', path: ['metadata', 'name'], value: 'db-primary' },
+      ]);
+    });
+
+    it('names a StatefulSet with a DNS label, where other kinds take a subdomain', () => {
+      // The name is the prefix of every Pod name the set generates, and those
+      // are hostnames — so a dot is fine on a Deployment and not here.
+      expectRules(VALID_DEPLOYMENT.replace('  name: web\n', '  name: web.api\n'), []);
+      expectRule(
+        VALID_STATEFULSET.replace('  name: db\n', '  name: db.primary\n'),
+        'pod/invalid-name',
+      );
     });
   });
 });
