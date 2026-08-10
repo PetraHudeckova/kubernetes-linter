@@ -6,6 +6,7 @@ import { deploymentRule } from './rules/deployment.js';
 import { ingressRule } from './rules/ingress.js';
 import { ingressClassRule } from './rules/ingressclass.js';
 import { jobRule } from './rules/job.js';
+import { persistentVolumeClaimRule } from './rules/persistentvolumeclaim.js';
 import { serviceRule } from './rules/service.js';
 import { statefulSetRule } from './rules/statefulset.js';
 
@@ -118,5 +119,9 @@ export const KINDS: Record<string, KindDescriptor> = {
     kind: 'IngressClass',
     clusterScoped: true,
     rules: [ingressClassRule],
+  },
+  PersistentVolumeClaim: {
+    kind: 'PersistentVolumeClaim',
+    rules: [persistentVolumeClaimRule],
   },
 };

@@ -11,7 +11,8 @@
   "CronJob": "io.k8s.api.batch.v1.CronJob",
   "Service": "io.k8s.api.core.v1.Service",
   "Ingress": "io.k8s.api.networking.v1.Ingress",
-  "IngressClass": "io.k8s.api.networking.v1.IngressClass"
+  "IngressClass": "io.k8s.api.networking.v1.IngressClass",
+  "PersistentVolumeClaim": "io.k8s.api.core.v1.PersistentVolumeClaim"
  },
  "definitions": {
   "io.k8s.api.apps.v1.DaemonSet": {

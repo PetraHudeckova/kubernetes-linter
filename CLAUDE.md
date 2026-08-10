@@ -96,7 +96,7 @@ Note that `ctx.supports()` takes an **absolute** path, so a pod-spec gate must b
 `ctx.supports(ctx.at(field))` — passing a bare `['spec', field]` would resolve against the
 wrong node on a Deployment and silently close the gate on every version.
 
-### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, Service, Ingress, IngressClass)
+### Kinds (Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, Service, Ingress, IngressClass, PersistentVolumeClaim)
 
 The kind comes from the **document**, not from a picker or a `lint()` argument: `lintSchema()`
 reads `kind`, resolves it against the bundle's `roots` map, and returns the name; `index.ts`
@@ -117,7 +117,8 @@ name to validate but a field the apiserver forbids, so it is reported as `meta/n
 and the format check is skipped.
 
 `podTemplate` is `{ specPath, metadataPath, claimTemplatesPath? }`, and **it is optional**:
-a Service, an Ingress and an IngressClass describe no Pod at all. Its absence is what makes `POD_RULES` skip the kind
+a Service, an Ingress, an IngressClass and a PersistentVolumeClaim describe no Pod at all. Its
+absence is what makes `POD_RULES` skip the kind
 (`index.ts`), so a kind with no pod template is checked by layer 1, by `RULES` — the
 document-level rules, `metadata.ts` and `enums.ts` — and by its own module, and by nothing
 else. `claimTemplatesPath` is the one concession to a kind that generates volumes: a
@@ -130,10 +131,11 @@ is not reported as undeclared.
 for a message. There are no `['spec', …]` literals left in the PodSpec rules; reintroducing one
 silently breaks Deployment. The deliberate exceptions are `rules/deployment.ts`,
 `rules/statefulset.ts`, `rules/daemonset.ts`, `rules/job.ts`, `rules/cronjob.ts`,
-`rules/service.ts`, `rules/ingress.ts` and `rules/ingressclass.ts`, which address
-`spec.selector`, `spec.strategy`, `spec.updateStrategy`, `spec.completionMode`, `spec.schedule`,
-`spec.ports`, `spec.rules`, `spec.controller` and the like — fields of the object itself, not of
-any pod spec.
+`rules/service.ts`, `rules/ingress.ts`, `rules/ingressclass.ts` and
+`rules/persistentvolumeclaim.ts`, which address `spec.selector`, `spec.strategy`,
+`spec.updateStrategy`, `spec.completionMode`, `spec.schedule`, `spec.ports`, `spec.rules`,
+`spec.controller`, `spec.accessModes` and the like — fields of the object itself, not of any
+pod spec.
 
 `ctx.doc` is the document root (used by `metadata.ts`, `enums.ts` and every per-kind module);
 `ctx.spec` is the PodSpec wherever this kind keeps it, and `{}` for a kind with no pod
@@ -142,7 +144,8 @@ is kind-correct for free.
 
 Rule IDs stay `pod/*` for PodSpec checks — they describe a PodSpec problem wherever it lives —
 and `deployment/*` / `statefulset/*` / `daemonset/*` / `job/*` / `cronjob/*` / `service/*` /
-`ingress/*` / `ingressclass/*` for checks on the object itself. The two document-level rules are named for what they check rather than for a kind,
+`ingress/*` / `ingressclass/*` / `persistentvolumeclaim/*` for checks on the object itself. The
+two document-level rules are named for what they check rather than for a kind,
 since they run for every kind including one with no Pod: `meta/*` in `metadata.ts` and
 `enum/*` in `enums.ts`. `Schema` is per version and holds every root; `Schema.for(kind)`
 returns the `KindSchema` view that both lint layers actually use.
@@ -221,6 +224,23 @@ says nothing about the `namespace` beside it. The last check is not a validation
 admission plugin that reads it, so `"True"` is a class that is quietly not the default. Like
 Ingress, none of it is version-gated.
 
+`persistentvolumeclaim.ts` is the fourth, and like `ingressclass.ts` the schema covers almost
+nothing: `PersistentVolumeClaimSpec` has no `required` list at all, so `accessModes` and
+`resources.requests.storage` — both required by the apiserver — are the module's to report,
+alongside `ReadWriteOncePod` combined with another mode, a non-positive storage request, a
+`storageClassName` or `volumeAttributesClassName` that is not a DNS subdomain, and the
+`dataSource`/`dataSourceRef` consistency checks. It is also the second kind whose checks are
+shared with a nested location the way `job.ts` shares `checkJobSpec` with `cronjob.ts`: a
+StatefulSet's `volumeClaimTemplates` and a Pod's `ephemeral.volumeClaimTemplate` are both
+`PersistentVolumeClaimSpec`s the apiserver validates with the very same function a
+PersistentVolumeClaim's own spec goes through, so this module exports `checkClaimSpec(ctx, spec,
+base)` for `rules/statefulset.ts` and `rules/volumes.ts` to call against those nested specs. A
+finding from either keeps its `persistentvolumeclaim/*` id and fires at the deeper path, exactly
+as a `job/*` finding does under a CronJob's `jobTemplate.spec`. `volumeAttributesClassName` is
+the one version-gated field, arriving in 1.29 alongside `VolumeResourceRequirements` replacing
+`ResourceRequirements` as the type of `resources` — a rename the schema-driven walk does not
+need to know about, since it only ever reads `resources.requests.storage` by key.
+
 **Adding a further kind**, in order:
 
 1. A root in `ROOTS` (`scripts/generate-schema.mjs`), then `npm run gen:schema` to regenerate
@@ -259,9 +279,11 @@ the two policies hanging off it, so per-kind files would be near-duplicates. Cro
 nothing on top of Job: its spec only wraps a JobTemplateSpec around the JobSpec the Job root
 already reaches, so it adds just `CronJob`, `CronJobSpec`, `CronJobStatus` and `JobTemplateSpec`.
 Service, Ingress and IngressClass are the roots that share nothing below `ObjectMeta`, and the
-first two still add only about a dozen definitions each while IngressClass adds two. API
-descriptions are kept on purpose — they are what the hover tooltip and most `explanation` fields
-render.
+first two still add only about a dozen definitions each while IngressClass adds two.
+PersistentVolumeClaim is the cheapest root of all: everything below its spec is already pulled
+in by StatefulSet's `volumeClaimTemplates`, so it adds only the `PersistentVolumeClaim` and
+`PersistentVolumeClaimStatus` wrapper definitions themselves. API descriptions are kept on
+purpose — they are what the hover tooltip and most `explanation` fields render.
 
 Definitions that are objects in the spec but scalars on the wire (`Quantity`, `IntOrString`,
 `Time`) are listed in `SCALAR_DEFINITIONS` in `schema.ts` and validated specially; validating

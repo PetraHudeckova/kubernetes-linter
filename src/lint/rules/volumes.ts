@@ -1,6 +1,7 @@
 import { isDNS1123Label } from '../../k8s/names.js';
 import { didYouMean } from '../suggest.js';
 import { asArray, asObject, asString, type Rule, type RuleContext } from './context.js';
+import { checkClaimSpec } from './persistentvolumeclaim.js';
 
 const VOLUME_DEFINITION = 'io.k8s.api.core.v1.Volume';
 
@@ -64,6 +65,14 @@ export const volumesRule: Rule = {
           message: `Volume ${name ? `"${name}"` : `#${index + 1}`} specifies ${present.length} sources (${present.join(', ')}); exactly one is allowed.`,
           explanation: 'Split these into separate volumes, each with its own name and single source.',
         });
+      }
+
+      // The apiserver validates this spec with the very same function a
+      // PersistentVolumeClaim's own spec goes through.
+      const claimTemplate = asObject(asObject(volume['ephemeral'])?.['volumeClaimTemplate']);
+      const claimSpec = asObject(claimTemplate?.['spec']);
+      if (claimSpec) {
+        checkClaimSpec(ctx, claimSpec, [...path, 'ephemeral', 'volumeClaimTemplate', 'spec']);
       }
     });
 

@@ -19,8 +19,11 @@
  * reaches, so the closure only grows by CronJob, CronJobSpec, CronJobStatus and
  * JobTemplateSpec. Service is the one root that shares nothing below metadata,
  * and it still costs under ten definitions; IngressClass costs two, both of
- * them its own. Separate per-kind files would be near-duplicates, and a single
- * bundle also means lint() can switch kinds mid-document without loading
+ * them its own. PersistentVolumeClaim costs nothing at all: everything below
+ * its spec is already pulled in by StatefulSet's volumeClaimTemplates, so the
+ * closure only grows by the PersistentVolumeClaim and PersistentVolumeClaimStatus
+ * wrapper definitions. Separate per-kind files would be near-duplicates, and a
+ * single bundle also means lint() can switch kinds mid-document without loading
  * anything.
  *
  * Usage:
@@ -46,6 +49,7 @@ const ROOTS = {
   Service: 'io.k8s.api.core.v1.Service',
   Ingress: 'io.k8s.api.networking.v1.Ingress',
   IngressClass: 'io.k8s.api.networking.v1.IngressClass',
+  PersistentVolumeClaim: 'io.k8s.api.core.v1.PersistentVolumeClaim',
 };
 
 /**

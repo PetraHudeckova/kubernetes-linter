@@ -8,6 +8,7 @@ import {
   type RuleContext,
 } from './context.js';
 import { checkKeyedMap } from './metadata.js';
+import { checkClaimSpec } from './persistentvolumeclaim.js';
 import { checkRequirement } from './selector.js';
 
 const STATEFULSET_DOCS = 'https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/';
@@ -416,6 +417,12 @@ function checkVolumeClaimTemplates(ctx: RuleContext, spec: Record<string, unknow
     const template = asObject(entry);
     if (!template) return;
     const path = ['spec', 'volumeClaimTemplates', index];
+
+    // The apiserver validates this spec with the very same function a
+    // PersistentVolumeClaim's own spec goes through.
+    const templateSpec = asObject(template['spec']);
+    if (templateSpec) checkClaimSpec(ctx, templateSpec, [...path, 'spec']);
+
     const name = asString(asObject(template['metadata'])?.['name']);
 
     if (name === undefined) {

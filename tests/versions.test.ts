@@ -14,6 +14,7 @@ import {
   VALID_INGRESS,
   VALID_INGRESS_CLASS,
   VALID_JOB,
+  VALID_PERSISTENTVOLUMECLAIM,
   VALID_SERVICE,
   VALID_STATEFULSET,
   cronJobWithPodSpec,
@@ -24,6 +25,7 @@ import {
   ingressWithPaths,
   job,
   jobWithPodSpec,
+  persistentVolumeClaim,
   pod,
   podWithContainer,
   service,
@@ -84,6 +86,7 @@ describe('bundled versions', () => {
         'Service',
         'Ingress',
         'IngressClass',
+        'PersistentVolumeClaim',
       ]);
       expect(schema.for('Deployment')?.apiVersion, version).toBe('apps/v1');
       expect(schema.for('StatefulSet')?.apiVersion, version).toBe('apps/v1');
@@ -94,6 +97,7 @@ describe('bundled versions', () => {
       expect(schema.for('Service')?.apiVersion, version).toBe('v1');
       expect(schema.for('Ingress')?.apiVersion, version).toBe('networking.k8s.io/v1');
       expect(schema.for('IngressClass')?.apiVersion, version).toBe('networking.k8s.io/v1');
+      expect(schema.for('PersistentVolumeClaim')?.apiVersion, version).toBe('v1');
     }
   });
 
@@ -167,6 +171,15 @@ describe('bundled versions', () => {
     // regeneration that dropped them would be invisible everywhere but here.
     for (const version of AVAILABLE_VERSIONS) {
       const { findings } = lint(VALID_INGRESS_CLASS, await schemaFor(version));
+      expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
+    }
+  });
+
+  it('lints a valid PersistentVolumeClaim cleanly on every version', async () => {
+    // The tenth root. Its closure was already pulled in by StatefulSet's
+    // volumeClaimTemplates, so this is the tripwire for the roots map alone.
+    for (const version of AVAILABLE_VERSIONS) {
+      const { findings } = lint(VALID_PERSISTENTVOLUMECLAIM, await schemaFor(version));
       expect(findings, `${version}: ${findings.map((f) => f.message).join('; ')}`).toEqual([]);
     }
   });
@@ -319,6 +332,30 @@ describe('StatefulSet fields that came and went', () => {
 
     expect(await ruleIdsAt('1.32', yaml)).toEqual(['schema/required-field']);
     expect(await ruleIdsAt('1.33', yaml)).toEqual([]);
+  });
+});
+
+describe('PersistentVolumeClaim fields that came and went', () => {
+  it('accepts spec.volumeAttributesClassName from 1.29', async () => {
+    const yaml = persistentVolumeClaim(
+      '  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 10Gi\n' +
+        '  volumeAttributesClassName: silver\n',
+    );
+
+    expect(await ruleIdsAt('1.28', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.29', yaml)).toEqual([]);
+  });
+
+  it('does not double-report an invalid name on a version without the field', async () => {
+    const yaml = persistentVolumeClaim(
+      '  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 10Gi\n' +
+        '  volumeAttributesClassName: Not_Valid\n',
+    );
+
+    expect(await ruleIdsAt('1.28', yaml)).toEqual(['schema/unknown-field']);
+    expect(await ruleIdsAt('1.29', yaml)).toContain(
+      'persistentvolumeclaim/invalid-volume-attributes-class-name',
+    );
   });
 });
 
